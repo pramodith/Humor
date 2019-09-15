@@ -44,7 +44,15 @@ def tokenize(X: list):
     #Pad sequences to make them all eqally long
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
 
-    return X
+    # Find the locations of each entity and store them
+    entity1_locs = np.asarray([[i for i, s in enumerate(sent) if s == '<'] for sent in tokenized_text])
+    entity2_locs = np.asarray([[i for i, s in enumerate(sent) if s == '^'] for sent in tokenized_text])
+    for i in range(len(entity2_locs)):
+        if len(entity2_locs[i]) > 2:
+            print(i)
+    replacement_locs = np.concatenate((entity1_locs, entity2_locs), 1)
+
+    return X,replacement_locs
 
 def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
     '''
@@ -67,27 +75,33 @@ def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch
     if mode=='train':
         y = df['meanGrade'].values
     edit = df['edit']
-    X = [sent.replace(replaced[i],edit[i]) for i,sent in enumerate(X)]
-    X = tokenize(X)
+    X = [sent+" [SEP] "+sent.replace(replaced[i],"^ "+edit[i]+" ^") for i,sent in enumerate(X)]
+    X = [sent.replace("<","< ").replace("/>"," <") for i,sent in enumerate(X)]
+    X,replacement_locs = tokenize(X)
 
     if mode == "train":
         train_inputs, validation_inputs, train_labels, validation_labels = train_test_split(X, y,
                                                                                             random_state=2019,
                                                                                             test_size=0.2)
 
+        train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
+                                                                           random_state=2019, test_size=0.2)
+
         train_inputs = torch.tensor(train_inputs)
         validation_inputs = torch.tensor(validation_inputs)
         train_labels = torch.tensor(train_labels)
         validation_labels = torch.tensor(validation_labels)
+        train_entity_locs = torch.tensor(train_entity_locs)
+        validation_entity_locs = torch.tensor(validation_entity_locs)
 
         # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
         # with an iterator the entire dataset does not need to be loaded into memory
 
-        train_data = TensorDataset(train_inputs, train_labels)
+        train_data = TensorDataset(train_inputs, train_entity_locs, train_labels)
         train_sampler = RandomSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
 
-        validation_data = TensorDataset(validation_inputs, validation_labels)
+        validation_data = TensorDataset(validation_inputs, validation_entity_locs, validation_labels)
         validation_sampler = SequentialSampler(validation_data)
         validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
         return train_dataloader, validation_dataloader
@@ -122,7 +136,7 @@ class RBERT(nn.Module):
         self.lr = lr
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.1),
-                  nn.Linear(768,100),
+                  nn.Linear(768*3,100),
                   )
         self.final_linear = nn.Sequential(nn.Dropout(0.1),nn.Linear(100,1))
 
@@ -135,16 +149,22 @@ class RBERT(nn.Module):
         '''
 
         input = input[0]
-        output_per_seq, _ = self.bert_model(input.long())
-        output_per_seq = torch.mean(output_per_seq,1)
+        output_per_seq, _ = self.bert_model(input[0].long())
         final_scores = []
         '''
         Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
         '''
-        sent_emb = torch.tanh(output_per_seq)
-        sent_out = self.linear_reg1(sent_emb)
-        final_out = self.final_linear(sent_out)
-        return final_out
+        for (i, loc) in enumerate(input[1]):
+            # +1 is to ensure that the symbol token is not considered
+            entity1 = torch.tanh(torch.mean(output_per_seq[i, loc[0] + 1:loc[1]], 0))
+            entity2 = torch.tanh(torch.mean(output_per_seq[i, loc[2] + 1:loc[3]], 0))
+            diff = torch.sub(entity1,entity2)
+            prod = entity1*entity2
+            sent_emb = output_per_seq[i, 0]
+            sent_out = self.linear_reg1(torch.cat((sent_emb,diff,prod),0))
+            final_out = self.final_linear(sent_out)
+            final_scores.append(final_out)
+        return torch.stack((final_scores))
 
     def train(self,mode=True):
         if torch.cuda.is_available():
@@ -159,16 +179,18 @@ class RBERT(nn.Module):
                 # If gpu is available move to gpu.
                 if torch.cuda.is_available():
                     input = batch[0].cuda()
-                    gt = batch[1].cuda()
+                    locs = batch[1].cuda()
+                    gt = batch[2].cuda()
                 else:
                     input = batch[0]
-                    gt = batch[1]
+                    locs = batch[1]
+                    gt = batch[2]
                 loss_val = 0
                 self.linear_reg1.train()
                 self.final_linear.train()
                 # Clear gradients
                 optimizer.zero_grad()
-                final_scores = self.forward((input))
+                final_scores = self.forward((input,locs))
                 loss_val += loss(final_scores.squeeze(1), gt.float())
                 # Compute gradients
                 loss_val.backward()
@@ -188,11 +210,13 @@ class RBERT(nn.Module):
                 for (val_batch_num, val_batch) in enumerate(val_dataloader):
                     if torch.cuda.is_available():
                         input = val_batch[0].cuda()
-                        gt = val_batch[1].cuda()
+                        locs = val_batch[1].cuda()
+                        gt = val_batch[2].cuda()
                     else:
                         input = val_batch[0]
-                        gt = val_batch[1]
-                    final_scores = self.forward((input))
+                        locs = val_batch[1]
+                        gt = val_batch[2]
+                    final_scores = self.forward((input,locs))
                     mse_loss+=mean_squared_error(final_scores.cpu().detach().squeeze(1),gt.cpu().detach())
                 print("Validation Loss is " + str(mse_loss /(val_batch_num+1)))
 
@@ -242,5 +266,5 @@ if __name__ == '__main__':
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
-    #obj.train()
-    obj.predict(args.model_file_path)
+    obj.train()
+    #obj.predict(args.model_file_path)
