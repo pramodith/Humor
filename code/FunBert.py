@@ -169,11 +169,10 @@ class RBERT(nn.Module):
             self.cuda()
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
         loss = nn.MSELoss()
-        total_prev_loss = 0
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders(self.train_file_path,"train",self.train_batch_size)
         for epoch in range(5):
-            loss_val = 0
+            total_prev_loss = 0
             for (batch_num, batch) in enumerate(train_dataloader):
                 # If gpu is available move to gpu.
                 if torch.cuda.is_available():
@@ -184,6 +183,7 @@ class RBERT(nn.Module):
                     input = batch[0]
                     locs = batch[1]
                     gt = batch[2]
+                loss_val = 0
                 self.linear_reg1.train()
                 self.final_linear.train()
                 # Clear gradients
@@ -192,12 +192,11 @@ class RBERT(nn.Module):
                 loss_val += loss(final_scores.squeeze(1), gt.float())
                 # Compute gradients
                 loss_val.backward()
-
+                total_prev_loss += loss_val.item()
                 print("Loss for batch" + str(batch_num) + ": " + str(loss_val.item()))
                 # Update weights according to the gradients computed.
                 optimizer.step()
-            total_prev_loss = loss_val.item()
-
+            
             if best_loss<total_prev_loss:
                 torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
                 best_loss = total_prev_loss
