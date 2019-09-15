@@ -152,7 +152,7 @@ class RBERT(nn.Module):
         loss = nn.MSELoss()
         train_dataloader,val_dataloader = get_dataloaders(self.train_file_path,"train",self.train_batch_size)
         for epoch in range(5):
-            '''
+
             for (batch_num, batch) in enumerate(train_dataloader):
 
                 # If gpu is available move to gpu.
@@ -176,7 +176,7 @@ class RBERT(nn.Module):
                 optimizer.step()
             
             torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
-            '''
+
             # Don't compute gradients in validation step
             with torch.no_grad():
                 # Ensure that dropout behavior is correct.
@@ -192,7 +192,7 @@ class RBERT(nn.Module):
                         input = val_batch[0]
                         gt = val_batch[1]
                     final_scores = self.forward((input))
-                    mse_loss+=mean_squared_error(final_scores.squeeze(1).numpy(),gt.numpy())
+                    mse_loss+=mean_squared_error(final_scores.squeeze(1),gt)
                 print("Validation Loss is " + str(mse_loss /(val_batch_num+1)))
 
     def predict(self,model_path=None):
