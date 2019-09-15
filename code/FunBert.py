@@ -64,7 +64,8 @@ def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch
     X = df['original'].values
     X = [sent.replace("\"","") for sent in X]
     replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">")+1])
-    y = df['meanGrade'].values
+    if mode=='train':
+        y = df['meanGrade'].values
     edit = df['edit']
     X = [sent.replace(replaced[i],edit[i]) for i,sent in enumerate(X)]
     X = tokenize(X)
@@ -92,7 +93,7 @@ def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch
         return train_dataloader, validation_dataloader
 
     if mode == "test":
-        test_data = TensorDataset(torch.tensor(X), torch.tensor(y))
+        test_data = TensorDataset(torch.tensor(X), torch.tensor(id))
         test_sampler = SequentialSampler(test_data)
         test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
 
@@ -206,42 +207,27 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
+            #pass
             self.load_state_dict(torch.load(model_path))
         test_dataloader = get_dataloaders(self.test_file_path,"test")
         self.bert_model.eval()
-        self.linear_entities.eval()
-        self.linear_cls.eval()
+        self.linear_reg1.eval()
         self.final_linear.eval()
-        with open("label2ind.json",'r') as f:
-            label2ind = json.load(f)
-        ind2label = {v:k for (k,v) in label2ind.items()}
-        acc = 0
-        f1 = 0
         with torch.no_grad():
-            with open("predictions.csv","w+") as f, open("gt.csv","w+") as g:
-
+            with open("task-1-output.csv","w+") as f:
+                f.writelines("id,pred")
                 for ind,batch in enumerate(test_dataloader):
                     if torch.cuda.is_available():
                         input = batch[0].cuda()
-                        locs = batch[1].cuda()
-                        gt = batch[2].cuda()
+                        id = batch[1].cuda()
                     else:
                         input = batch[0]
-                        locs = batch[1]
-                        gt = batch[2]
-                    final_scores = self.forward((input,locs))
-                    predictions = torch.argmax(final_scores,1).tolist()
-                   # print(sentences[ind])
-                    #print(ind2label[predictions[0]],ind2label[gt[0].item()])
-                    acc += accuracy_score(gt.tolist(), predictions)
-                    f1 += f1_score(gt.tolist(), predictions, average='weighted')
-                    for cnt,pred in enumerate(zip(predictions,gt.tolist())):
-                        f.writelines(str(8000+ind*64+cnt)+"\t"+str(ind2label[pred[0]])+"\n")
-                        g.writelines(str(8000+ind*64+cnt)+"\t"+str(ind2label[pred[1]])+"\n")
+                        id = batch[1]
+                    final_scores = self.forward((input)).view(-1)
+                    for cnt,pred in enumerate(final_scores):
+                        f.writelines(str(id[cnt].item())+","+str(pred.item()))
 
 
-        print("Accuracy is " + str(acc/(ind+1)))
-        print("F1-score is " + str(f1/(ind+1)))
 
 
 
@@ -251,10 +237,10 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size",action="store",type=int,default=4,required=False)
     parser.add_argument("--train_file_path",type=str,default="../data/task-1/train.csv",required=False)
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
-    parser.add_argument("--test_file_path", type=str, default="../data/test.csv", required=False)
-    parser.add_argument("--model_file_path", type=str, default="model_4.pth", required=False)
+    parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
+    parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
-    obj.train()
-    #obj.predict(args.model_file_path)
+    #obj.train()
+    obj.predict(args.model_file_path)
