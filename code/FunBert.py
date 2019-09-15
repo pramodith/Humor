@@ -192,7 +192,7 @@ class RBERT(nn.Module):
                         input = val_batch[0]
                         gt = val_batch[1]
                     final_scores = self.forward((input))
-                    mse_loss+=mean_squared_error(final_scores.squeeze(1),gt)
+                    mse_loss+=mean_squared_error(final_scores.cpu().detach().squeeze(1),gt.cpu().detach())
                 print("Validation Loss is " + str(mse_loss /(val_batch_num+1)))
 
     def predict(self,model_path=None):
