@@ -136,7 +136,7 @@ class RBERT(nn.Module):
         self.lr = lr
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.1),
-                  nn.Linear(768*3,100),
+                  nn.Linear(768*2,100),
                   )
         self.final_linear = nn.Sequential(nn.Dropout(0.1),nn.Linear(100,1))
 
