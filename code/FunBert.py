@@ -215,7 +215,7 @@ class RBERT(nn.Module):
         self.final_linear.eval()
         with torch.no_grad():
             with open("task-1-output.csv","w+") as f:
-                f.writelines("id,pred")
+                f.writelines("id,pred\n")
                 for ind,batch in enumerate(test_dataloader):
                     if torch.cuda.is_available():
                         input = batch[0].cuda()
@@ -225,7 +225,7 @@ class RBERT(nn.Module):
                         id = batch[1]
                     final_scores = self.forward((input)).view(-1)
                     for cnt,pred in enumerate(final_scores):
-                        f.writelines(str(id[cnt].item())+","+str(pred.item()))
+                        f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
 
 
 
