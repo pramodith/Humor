@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score,f1_score,mean_squared_error
 from keras.preprocessing.sequence import pad_sequences
 from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-import json
+import sys
 import argparse
 
 
@@ -142,10 +142,8 @@ class RBERT(nn.Module):
 
     def forward(self, *input):
         '''
-
         :param input: input[0] is the sentence, input[1] are the entity locations , input[2] is the ground truth
         :return: Scores for each class
-
         '''
 
         input = input[0]
@@ -160,8 +158,8 @@ class RBERT(nn.Module):
             entity2 = torch.tanh(torch.mean(output_per_seq[i, loc[2] + 1:loc[3]], 0))
             diff = torch.sub(entity1,entity2)
             prod = entity1*entity2
-            sent_emb = output_per_seq[i, 0]
-            sent_out = self.linear_reg1(torch.cat((sent_emb,diff,prod),0))
+            #sent_emb = output_per_seq[i, 0]
+            sent_out = self.linear_reg1(torch.cat((diff,prod),0))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
@@ -171,11 +169,12 @@ class RBERT(nn.Module):
             self.cuda()
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
         loss = nn.MSELoss()
+        total_prev_loss = 0
+        best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders(self.train_file_path,"train",self.train_batch_size)
         for epoch in range(5):
-
+            loss_val = 0
             for (batch_num, batch) in enumerate(train_dataloader):
-
                 # If gpu is available move to gpu.
                 if torch.cuda.is_available():
                     input = batch[0].cuda()
@@ -185,7 +184,6 @@ class RBERT(nn.Module):
                     input = batch[0]
                     locs = batch[1]
                     gt = batch[2]
-                loss_val = 0
                 self.linear_reg1.train()
                 self.final_linear.train()
                 # Clear gradients
@@ -194,12 +192,15 @@ class RBERT(nn.Module):
                 loss_val += loss(final_scores.squeeze(1), gt.float())
                 # Compute gradients
                 loss_val.backward()
+
                 print("Loss for batch" + str(batch_num) + ": " + str(loss_val.item()))
                 # Update weights according to the gradients computed.
                 optimizer.step()
-            
-            torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
+            total_prev_loss = loss_val.item()
 
+            if best_loss<total_prev_loss:
+                torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
+                best_loss = total_prev_loss
             # Don't compute gradients in validation step
             with torch.no_grad():
                 # Ensure that dropout behavior is correct.
