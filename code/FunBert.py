@@ -139,10 +139,10 @@ class RBERT(nn.Module):
         self.test_file_path = test_file_path
         self.lr = lr
         self.linear_reg1 = nn.Sequential(
-                  nn.Dropout(0.1),
-                  nn.Linear(768*3,100),
+                  nn.Dropout(0.3),
+                  nn.Linear(768*2,100),
                   )
-        self.final_linear = nn.Sequential(nn.Dropout(0.1),nn.Linear(100,1))
+        self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
 
     def forward(self, *input):
         '''
@@ -160,11 +160,11 @@ class RBERT(nn.Module):
         '''
         for (i, loc) in enumerate(input[2]):
             # +1 is to ensure that the symbol token is not considered
-            entity1 = torch.tanh(torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0))
-            entity2 = torch.tanh(torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0))
+            entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
+            entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
             diff = torch.sub(entity1,entity2)
             prod = entity1*entity2
-            sent_out = self.linear_reg1(torch.cat((sent_emb[i],diff,prod),0))
+            sent_out = self.linear_reg1(torch.cat((sent_emb[i],diff),0))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
@@ -203,9 +203,6 @@ class RBERT(nn.Module):
                 print("Loss for batch" + str(batch_num) + ": " + str(loss_val.item()))
                 # Update weights according to the gradients computed.
                 optimizer.step()
-            if best_loss>total_prev_loss:
-                torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
-                best_loss = total_prev_loss
             # Don't compute gradients in validation step
             with torch.no_grad():
                 # Ensure that dropout behavior is correct.
@@ -226,6 +223,9 @@ class RBERT(nn.Module):
                         gt = val_batch[3]
                     final_scores = self.forward((input1,input2,locs))
                     mse_loss+=mean_squared_error(final_scores.cpu().detach().squeeze(1),gt.cpu().detach())
+                if mse_loss<best_loss:
+                    torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
+                    best_loss = total_prev_loss
                 print("Validation Loss is " + str(mse_loss /(val_batch_num+1)))
 
     def predict(self,model_path=None):
