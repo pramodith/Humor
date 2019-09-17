@@ -1,122 +1,10 @@
 import torch
-from pytorch_pretrained_bert import BertTokenizer, BertConfig
-from pytorch_pretrained_bert import BertAdam, BertForSequenceClassification
-from tqdm import tqdm, trange
-import pandas as pd
 import torch.nn as nn
-import io
-import numpy as np
-import matplotlib.pyplot as plt
 import torch.optim as optim
 from sklearn.metrics import accuracy_score,f1_score,mean_squared_error
-from keras.preprocessing.sequence import pad_sequences
-from sklearn.model_selection import train_test_split
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import sys
 import argparse
-
-
-def tokenize(X: list, org : bool):
-    '''
-    This function tokenizes the input sentences and returns a vectorized representation of them and the location
-    of each entity in the sentence.
-
-    :param X: List of all input sentences
-    :return: A vectorized list representation of the sentence and a numpy array containing the locations of each entity. First two
-    values in  a row belong to entity1 and the next two values belong to entity2.
-    '''
-
-    # Add the SOS and EOS tokens.
-    # TODO: Replace fullstops with [SEP]
-    sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
-
-    # Load the tokenizer
-    tokenizer = torch.hub.load('huggingface/pytorch-pretrained-BERT', 'tokenizer', 'bert-base-uncased',
-                               do_basic_tokenize=True)
-
-    # Tokenize and vectorize
-    tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
-    X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
-
-    # MAX_SEQ_LEN
-    MAX_LEN = max([len(x) for x in X])
-
-    #Pad sequences to make them all eqally long
-    X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
-
-    # Find the locations of each entity and store them
-    if org:
-        entity_locs = np.asarray([[i for i, s in enumerate(sent) if s == '<'] for sent in tokenized_text])
-    else:
-        entity_locs = np.asarray([[i for i, s in enumerate(sent) if s == '^'] for sent in tokenized_text])
-
-    return X,entity_locs
-
-def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
-    '''
-
-    This function creates pytorch dataloaders for fast and easy iteration over the dataset.
-
-    :param file_path: Path of the file containing train/test data
-    :param mode: Test mode or Train mode
-    :param train_batch_size: Size of the batch during training
-    :param test_batch_size: Size of the batch during testing
-    :return: Dataloaders
-    '''
-
-    # Read the data,tokenize and vectorize
-    df = pd.read_csv(file_path, sep=",")
-    id = df['id']
-    X = df['original'].values
-    X = [sent.replace("\"","") for sent in X]
-    replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">")+1])
-    if mode=='train':
-        y = df['meanGrade'].values
-    edit = df['edit']
-    X2 = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
-    X1 = [sent.replace("<","< ").replace("/>"," <") for i,sent in enumerate(X)]
-    X1,e1_locs = tokenize(X1,True)
-    X2,e2_locs = tokenize(X2,False)
-    replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
-
-    if mode == "train":
-        train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
-                                                                                            random_state=2019,
-                                                                                            test_size=0.2)
-        train2_inputs, validation2_inputs, _, _ = train_test_split(X2, y,
-                                                                                              random_state=2019,
-                                                                                              test_size=0.2)
-        train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
-                                                                           random_state=2019, test_size=0.2)
-
-        train1_inputs = torch.tensor(train1_inputs)
-        validation1_inputs = torch.tensor(validation1_inputs)
-        train2_inputs = torch.tensor(train2_inputs)
-        validation2_inputs = torch.tensor(validation2_inputs)
-        train_labels = torch.tensor(train_labels)
-        validation_labels = torch.tensor(validation_labels)
-        train_entity_locs = torch.tensor(train_entity_locs)
-        validation_entity_locs = torch.tensor(validation_entity_locs)
-
-        # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
-        # with an iterator the entire dataset does not need to be loaded into memory
-
-        train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_labels)
-        train_sampler = RandomSampler(train_data)
-        train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
-
-        validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_labels)
-        validation_sampler = SequentialSampler(validation_data)
-        validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
-        return train_dataloader, validation_dataloader
-
-    if mode == "test":
-        test_data = TensorDataset(torch.tensor(X), torch.tensor(id))
-        test_sampler = SequentialSampler(test_data)
-        test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
-
-        return test_data_loader
-
+from data_handler import *
 
 class RBERT(nn.Module):
 
@@ -153,7 +41,7 @@ class RBERT(nn.Module):
         input = input[0]
         output_per_seq1, _ = self.bert_model(input[0].long())
         output_per_seq2, _ = self.bert_model(input[1].long())
-        sent_emb = (torch.mean(output_per_seq1,1)+torch.mean(output_per_seq2))/2
+        sent_emb = (torch.mean(output_per_seq1,1)-torch.mean(output_per_seq2))
         final_scores = []
         '''
         Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
@@ -175,7 +63,7 @@ class RBERT(nn.Module):
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
-        train_dataloader,val_dataloader = get_dataloaders(self.train_file_path,"train",self.train_batch_size)
+        train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
         for epoch in range(5):
             total_prev_loss = 0
             for (batch_num, batch) in enumerate(train_dataloader):
@@ -225,7 +113,7 @@ class RBERT(nn.Module):
                     mse_loss+=mean_squared_error(final_scores.cpu().detach().squeeze(1),gt.cpu().detach())
                 if mse_loss<best_loss:
                     torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
-                    best_loss = total_prev_loss
+                    best_loss = mse_loss
                 print("Validation Loss is " + str(mse_loss /(val_batch_num+1)))
 
     def predict(self,model_path=None):
@@ -241,7 +129,7 @@ class RBERT(nn.Module):
         if model_path:
             #pass
             self.load_state_dict(torch.load(model_path))
-        test_dataloader = get_dataloaders(self.test_file_path,"test")
+        test_dataloader = get_dataloaders_bert(self.test_file_path,"test")
         self.bert_model.eval()
         self.linear_reg1.eval()
         self.final_linear.eval()
