@@ -52,7 +52,7 @@ class RBERT(nn.Module):
             entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
             diff = torch.sub(entity1,entity2)
             prod = entity1*entity2
-            sent_out = self.linear_reg1(torch.cat((sent_emb[i],diff),0))
+            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],diff),0)))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
@@ -60,7 +60,7 @@ class RBERT(nn.Module):
     def train(self,mode=True):
         if torch.cuda.is_available():
             self.cuda()
-        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.001)
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
