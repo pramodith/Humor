@@ -41,7 +41,7 @@ class RBERT(nn.Module):
         input = input[0]
         output_per_seq1, _ = self.bert_model(input[0].long())
         output_per_seq2, _ = self.bert_model(input[1].long())
-        sent_emb = (torch.mean(output_per_seq1,1)-torch.mean(output_per_seq2))
+        sent_emb = (torch.mean(output_per_seq1,1)*torch.mean(output_per_seq2))
         final_scores = []
         '''
         Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
@@ -52,7 +52,7 @@ class RBERT(nn.Module):
             entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
             diff = torch.sub(entity1,entity2)
             prod = entity1*entity2
-            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],diff),0)))
+            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],prod),0)))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
@@ -146,10 +146,6 @@ class RBERT(nn.Module):
                     final_scores = self.forward((input)).view(-1)
                     for cnt,pred in enumerate(final_scores):
                         f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
-
-
-
-
 
 
 if __name__ == '__main__':
