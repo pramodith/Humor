@@ -38,7 +38,7 @@ class LSTMModel(nn.Module):
         self.linear2 = nn.Linear(100,1)
 
     def forward(self, *input):
-        input = input[1]
+        input = input[0]
         out = self.embedding(input[1])
         out, (hn,cn) = self.lstm(out)
         out = self.linear2(self.linear1(torch.tanh(out[:,-1,:])))
