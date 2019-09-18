@@ -7,7 +7,6 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 import json
 
 def create_vocab_dict(X : list):
-    max_seq_len = max([len(X[i]) for i in range(len(X))])
     sentences = [X[i].split(" ") for i in range(len(X))]
     words = [word for sent in sentences for word in sent]
     words = set(words)
@@ -17,27 +16,41 @@ def create_vocab_dict(X : list):
     word2ind = {}
     for ind, word in enumerate(words):
         word2ind[word] = ind + 1
-    json.dump(word2ind, "word2ind.json", indent=5)
+    with open("word2ind.json","w+") as f:
+        json.dump(word2ind, f, indent=5)
 
 
 def tokenize(X :list):
-    X = [[word2ind[sent[ind]] if ind<max_seq_len else word2ind["<EOS>"] for ind in range(max_seq_len) ] for sent in sentences]
-    X = [sent.insert(0,word2ind["<SOS>"]) for sent in sentences]
+    max_seq_len = max([len(X[i]) for i in range(len(X))])
+    sentences = [X[i].split(" ") for i in range(len(X))]
+    with open("word2ind.json", "r") as f:
+        word2ind = json.load(f)
+    X = [[word2ind[sent[ind]] if ind<len(sent) else word2ind["<EOS>"] for ind in range(max_seq_len) ] for sent in sentences]
+    for sent in X:
+        sent.insert(0,word2ind['<SOS>'])
     return X
 
 
 def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
     df = pd.read_csv(file_path, sep=",")
     id = df['id']
-    X = df['original'].apply(lambda sent: sent.replace("\"","").replace())
-    replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">") + 1])
+    X = df['original'].apply(lambda sent: sent.replace("\"","").replace("<","").replace("/>","").lower())
+    replaced = df['original'].apply(lambda x: x[x.index("<")+1:x.index(">")-1].lower())
     if mode == 'train':
         y = df['meanGrade'].values
     edit = df['edit']
-    words = X + df['edit']
-    X2 = [sent.replace(replaced[i],edit[i]) for i, sent in enumerate(X)]
+    words = X + " " + df['edit']
+    create_vocab_dict(words)
+    X2 = [sent.replace(" "+replaced[i]+" "," "+edit[i]+" ") for i, sent in enumerate(X)]
     X1 = [sent.replace("<","").replace("/>", "") for i, sent in enumerate(X)]
-    locs = [X1[i].split(" ").index(replaced[i]) for i in range(len(X1))]
+    locs =[]
+    for i in range(len(X1)):
+        if replaced[i] in X[i].split(" "):
+            locs.append(X1[i].split(" ").index(replaced[i]))
+        else:
+            locs.append(0)
+    X2 = tokenize(X2)
+    X1 = tokenize(X1)
 
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
