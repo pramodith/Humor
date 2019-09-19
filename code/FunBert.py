@@ -127,8 +127,8 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
-            #pass
-            self.load_state_dict(torch.load(model_path))
+            pass
+            #self.load_state_dict(torch.load(model_path))
         test_dataloader = get_dataloaders_bert(self.test_file_path,"test")
         self.bert_model.eval()
         self.linear_reg1.eval()
@@ -138,12 +138,16 @@ class RBERT(nn.Module):
                 f.writelines("id,pred\n")
                 for ind,batch in enumerate(test_dataloader):
                     if torch.cuda.is_available():
-                        input = batch[0].cuda()
-                        id = batch[1].cuda()
+                        input1 = batch[0].cuda()
+                        input2 = batch[1].cuda()
+                        locs = batch[2].cuda()
+                        id = batch[3].cuda()
                     else:
-                        input = batch[0]
-                        id = batch[1]
-                    final_scores = self.forward((input)).view(-1)
+                        input1 = batch[0]
+                        input2 = batch[1]
+                        locs = batch[2]
+                        id = batch[3]
+                    final_scores = self.forward((input1,input2,locs)).view(-1)
                     for cnt,pred in enumerate(final_scores):
                         f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
 
@@ -159,6 +163,7 @@ if __name__ == '__main__':
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
+    obj.predict(args.model_file_path)
     if args.predict:
         obj.predict(args.model_file_path)
     else:
