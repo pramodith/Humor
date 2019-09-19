@@ -127,8 +127,7 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
-            pass
-            #self.load_state_dict(torch.load(model_path))
+            self.load_state_dict(torch.load(model_path))
         test_dataloader = get_dataloaders_bert(self.test_file_path,"test")
         self.bert_model.eval()
         self.linear_reg1.eval()
@@ -159,12 +158,12 @@ if __name__ == '__main__':
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
-    parser.add_argument("--predict", type=bool, default=False,required=False)
+    parser.add_argument("--predict", type=str, default=False,required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
     #obj.predict(args.model_file_path)
-    if args.predict:
+    if args.predict=='true':
         obj.predict(args.model_file_path)
     else:
         obj.train()
