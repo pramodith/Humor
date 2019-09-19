@@ -163,7 +163,7 @@ if __name__ == '__main__':
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
-    obj.predict(args.model_file_path)
+    #obj.predict(args.model_file_path)
     if args.predict:
         obj.predict(args.model_file_path)
     else:
