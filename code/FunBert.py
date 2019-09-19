@@ -155,8 +155,10 @@ if __name__ == '__main__':
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
+    parser.add_argument("--predict", type=bool, default=False,required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
     obj.train()
-    #obj.predict(args.model_file_path)
+    if args.predict:
+        obj.predict(args.model_file_path)
