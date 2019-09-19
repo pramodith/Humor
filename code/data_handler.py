@@ -186,8 +186,11 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
         return train_dataloader, validation_dataloader
 
     if mode == "test":
-        X,_ = tokenize_bert(X,True)
-        test_data = TensorDataset(torch.tensor(X), torch.tensor(id))
+        test1_input = torch.tensor(X1)
+        test2_input = torch.tensor(X2)
+        train_entity_locs = torch.tensor(replacement_locs)
+        id = torch.tensor(id)
+        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,id)
         test_sampler = SequentialSampler(test_data)
         test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
 
