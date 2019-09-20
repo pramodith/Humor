@@ -33,7 +33,7 @@ def tokenize(X :list):
 
 def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     jokes_df = pd.read_csv(file_path)
-    jokes = jokes_df['Joke'][:50000]
+    jokes = jokes_df['Joke']
     jokes = "[CLS] " + jokes + " [SEP]"
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     X = [tokenizer.encode(sent) for sent in jokes]
@@ -42,7 +42,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     X = torch.tensor(X)
     dataset = TensorDataset(torch.tensor(X))
     sampler = RandomSampler(dataset)
-    data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=False)
+    data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=True)
     return data_loader
 
 

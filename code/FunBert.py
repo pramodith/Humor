@@ -42,7 +42,7 @@ class RBERT(nn.Module):
         print("Training LM")
         if torch.cuda.is_available():
             self.bert_model.cuda()
-        for epoch in range(5):
+        for epoch in range(1):
             print("Epoch : " +str(epoch))
             for batch in train_dataloader:
                 optimizer.zero_grad()
