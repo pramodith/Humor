@@ -3,12 +3,15 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score,f1_score,mean_squared_error
 import sys
+from pytorch_transformers import BertForMaskedLM,BertTokenizer
+from pytorch_pretrained_bert import BertAdam
 import argparse
 from data_handler import *
 
+
 class RBERT(nn.Module):
 
-    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, train_batch_size : int,test_batch_size : int,lr : float):
+    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,test_batch_size : int,lr : float):
         '''
 
         :param train_file_path: Path to the train file
@@ -19,10 +22,11 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = torch.hub.load('huggingface/pytorch-pretrained-BERT', 'model', 'bert-base-uncased')
+        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
+        self.lm_file_path = lm_file_path
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
         self.lr = lr
@@ -31,6 +35,19 @@ class RBERT(nn.Module):
                   nn.Linear(768*2,100),
                   )
         self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
+
+    def pre_train_bert(self):
+        optimizer = BertAdam(self.bert_model.parameters(),2e-5)
+        train_dataloader = get_bert_lm_dataloader(self.lm_file_path)
+        for epoch in range(5):
+            for batch in train_dataloader:
+                optimizer.zero_grad()
+                outputs = self.bert_model(batch[0],masked_lm_labels=batch[0])
+                loss, prediction_scores = outputs[:2]
+                loss.backward()
+                optimizer.step()
+        torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
+
 
     def forward(self, *input):
         '''
@@ -157,12 +174,13 @@ if __name__ == '__main__':
     parser.add_argument("--train_file_path",type=str,default="../data/task-1/train.csv",required=False)
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
+    parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes.csv", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default=False,required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
-    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.batch_size,64,args.lr)
-    #obj.predict(args.model_file_path)
+    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr)
+    obj.pre_train_bert()
     if args.predict=='true':
         obj.predict(args.model_file_path)
     else:
