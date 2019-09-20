@@ -53,7 +53,7 @@ class RBERT(nn.Module):
                 outputs = self.bert_model(inp,masked_lm_labels=inp)
                 loss, prediction_scores = outputs[:2]
                 loss.backward()
-                print("Loss is :" + loss.item())
+                print("Loss is :" + str(loss.item()))
                 optimizer.step()
         print("LM training done")
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
