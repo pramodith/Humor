@@ -44,7 +44,7 @@ class RBERT(nn.Module):
             self.bert_model.cuda()
         for epoch in range(1):
             print("Epoch : " +str(epoch))
-            for batch in train_dataloader:
+            for ind,batch in enumerate(train_dataloader):
                 optimizer.zero_grad()
                 if torch.cuda.is_available():
                     inp = batch[0].cuda()
@@ -55,6 +55,8 @@ class RBERT(nn.Module):
                 loss.backward()
                 print("Loss is :" + str(loss.item()))
                 optimizer.step()
+                if ind>500:
+                    break
         print("LM training done")
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
 
