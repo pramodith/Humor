@@ -31,7 +31,7 @@ def tokenize(X :list):
         sent.insert(0,word2ind['<SOS>'])
     return X
 
-def get_bert_lm_dataloader(file_path : str,batch_size = 64):
+def get_bert_lm_dataloader(file_path : str,batch_size = 32):
     jokes_df = pd.read_csv(file_path)
     jokes = jokes_df['Joke'][:20000]
     jokes = "[CLS] " + jokes + " [SEP]"
