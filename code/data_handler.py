@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import json
+from pytorch_transformers import BertTokenizer
 
 def create_vocab_dict(X : list):
     sentences = [X[i].split(" ") for i in range(len(X))]
@@ -29,6 +30,20 @@ def tokenize(X :list):
     for sent in X:
         sent.insert(0,word2ind['<SOS>'])
     return X
+
+def get_bert_lm_dataloader(file_path : str,batch_size = 64):
+    jokes_df = pd.read_csv(file_path)
+    jokes = jokes_df['Joke'][:20000]
+    jokes = "[CLS] " + jokes + " [SEP]"
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    X = [tokenizer.encode(sent) for sent in jokes]
+    MAX_LEN = max([len(sent) for sent in jokes])
+    X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
+    X = torch.tensor(X)
+    dataset = TensorDataset(torch.tensor(X))
+    sampler = RandomSampler(dataset)
+    data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=True)
+    return data_loader
 
 
 def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):

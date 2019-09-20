@@ -39,13 +39,16 @@ class RBERT(nn.Module):
     def pre_train_bert(self):
         optimizer = BertAdam(self.bert_model.parameters(),2e-5)
         train_dataloader = get_bert_lm_dataloader(self.lm_file_path)
+        print("Training LM")
         for epoch in range(5):
+            print("Epoch : " +str(epoch))
             for batch in train_dataloader:
                 optimizer.zero_grad()
                 outputs = self.bert_model(batch[0],masked_lm_labels=batch[0])
                 loss, prediction_scores = outputs[:2]
                 loss.backward()
                 optimizer.step()
+        print("LM training done")
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
 
 
