@@ -42,7 +42,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 64):
     X = torch.tensor(X)
     dataset = TensorDataset(torch.tensor(X))
     sampler = RandomSampler(dataset)
-    data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=True)
+    data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=False)
     return data_loader
 
 
