@@ -80,7 +80,7 @@ class RBERT(nn.Module):
     def train(self,mode=True):
         if torch.cuda.is_available():
             self.cuda()
-        optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.01)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.0001)
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
