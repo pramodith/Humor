@@ -33,7 +33,7 @@ def tokenize(X :list):
 
 def get_bert_lm_dataloader(file_path : str,batch_size = 32):
     jokes_df = pd.read_csv(file_path)
-    jokes = jokes_df['Joke'][:20000]
+    jokes = jokes_df['Joke'][:5000]
     jokes = "[CLS] " + jokes + " [SEP]"
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     X = [tokenizer.encode(sent) for sent in jokes]
