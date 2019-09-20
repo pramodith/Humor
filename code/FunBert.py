@@ -50,7 +50,7 @@ class RBERT(nn.Module):
                     inp = batch[0].cuda()
                 else:
                     inp = batch[0]
-                outputs = self.bert_model(inp,masked_lm_labels=batch[0])
+                outputs = self.bert_model(inp,masked_lm_labels=inp)
                 loss, prediction_scores = outputs[:2]
                 loss.backward()
                 print("Loss is :" + loss.item())
