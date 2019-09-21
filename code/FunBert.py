@@ -12,7 +12,7 @@ import torchsummary
 
 class RBERT(nn.Module):
 
-    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,test_batch_size : int,lr : float):
+    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,test_batch_size : int,lr : float, lm_weights_file_path : str):
         '''
 
         :param train_file_path: Path to the train file
@@ -24,6 +24,7 @@ class RBERT(nn.Module):
 
         super(RBERT, self).__init__()
         self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+        self.load_joke_lm_weights(lm_weights_file_path)
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
@@ -36,6 +37,9 @@ class RBERT(nn.Module):
                   nn.Linear(768*2,100),
                   )
         self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
+
+    def load_joke_lm_weights(self,lm_path : str):
+        self.bert_model.load_state_dict(torch.load(lm_path))
 
     def pre_train_bert(self):
         optimizer = BertAdam(self.bert_model.parameters(),2e-5)
@@ -69,20 +73,20 @@ class RBERT(nn.Module):
         '''
 
         input = input[0]
-        output_per_seq1, _ = self.bert_model(input[0].long())
+        #output_per_seq1, _ = self.bert_model(input[0].long())
         output_per_seq2, _ = self.bert_model(input[1].long())
-        sent_emb = (torch.mean(output_per_seq1,1)*torch.mean(output_per_seq2))
+        sent_emb = (torch.mean(output_per_seq2,1))
         final_scores = []
         '''
         Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
         '''
         for (i, loc) in enumerate(input[2]):
             # +1 is to ensure that the symbol token is not considered
-            entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
+            #entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
             entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-            diff = torch.sub(entity1,entity2)
-            prod = entity1*entity2
-            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],prod),0)))
+            #diff = torch.sub(entity1,entity2)
+            #prod = entity1*entity2
+            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],entity2),0)))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
@@ -189,12 +193,13 @@ if __name__ == '__main__':
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes.csv", required=False)
+    parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default=False,required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
-    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr)
-    obj.pre_train_bert()
+    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr,args.lm_weights_file_path)
+    #obj.pre_train_bert()
     if args.predict=='true':
         obj.predict(args.model_file_path)
     else:
