@@ -34,7 +34,7 @@ class RBERT(nn.Module):
         self.lr = lr
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(768*2,100),
+                  nn.Linear(768*3,100),
                   )
         self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
 
@@ -84,9 +84,10 @@ class RBERT(nn.Module):
             # +1 is to ensure that the symbol token is not considered
             #entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
             entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
+            entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
             #diff = torch.sub(entity1,entity2)
             #prod = entity1*entity2
-            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],entity2),0)))
+            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],entity2,entity2_max),0)))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
@@ -95,7 +96,7 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         self.bert_model = self.bert_model.bert
-        optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.0001)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.001)
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
