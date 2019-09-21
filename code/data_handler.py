@@ -121,8 +121,7 @@ def tokenize_bert(X: list, org : bool):
     sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
 
     # Load the tokenizer
-    tokenizer = torch.hub.load('huggingface/pytorch-pretrained-BERT', 'tokenizer', 'bert-base-uncased',
-                               do_basic_tokenize=True)
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
     # Tokenize and vectorize
     tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
