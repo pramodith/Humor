@@ -56,7 +56,7 @@ class RBERT(nn.Module):
                 loss.backward()
                 print("Loss is :" + str(loss.item()))
                 optimizer.step()
-                if ind>500:
+                if ind>2000:
                     break
         print("LM training done")
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
