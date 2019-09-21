@@ -7,6 +7,7 @@ from pytorch_transformers import BertForMaskedLM,BertTokenizer
 from pytorch_pretrained_bert import BertAdam
 import argparse
 from data_handler import *
+import torchsummary
 
 
 class RBERT(nn.Module):
@@ -89,6 +90,7 @@ class RBERT(nn.Module):
     def train(self,mode=True):
         if torch.cuda.is_available():
             self.cuda()
+        self.bert_model = self.bert_model.bert
         optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.0001)
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
