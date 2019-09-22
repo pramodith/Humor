@@ -100,7 +100,7 @@ class RBERT(nn.Module):
             self.cuda()
         self.bert_model = self.bert_model.bert
         optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.001)
-        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=2,gamma=0.1)
+        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=2,gamma=0.1,last_epoch=4)
 
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
