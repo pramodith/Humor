@@ -87,7 +87,7 @@ class RBERT(nn.Module):
             entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
             #diff = torch.sub(entity1,entity2)
             #prod = entity1*entity2
-            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],entity2,entity2_max),0)))
+            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],entity2,entity2_max[0]),0)))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
