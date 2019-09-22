@@ -163,6 +163,7 @@ class RBERT(nn.Module):
         :return:
 
         '''
+        self.bert_model = self.bert_model.bert
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
