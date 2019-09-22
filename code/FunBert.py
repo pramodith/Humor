@@ -100,6 +100,8 @@ class RBERT(nn.Module):
             self.cuda()
         self.bert_model = self.bert_model.bert
         optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.001)
+        scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=2,gamma=0.1)
+
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
@@ -130,6 +132,7 @@ class RBERT(nn.Module):
                 print("Loss for batch" + str(batch_num) + ": " + str(loss_val.item()))
                 # Update weights according to the gradients computed.
                 optimizer.step()
+
             # Don't compute gradients in validation step
             with torch.no_grad():
                 # Ensure that dropout behavior is correct.
@@ -154,6 +157,7 @@ class RBERT(nn.Module):
                     torch.save(self.state_dict(), "model_" + str(epoch) + ".pth")
                     best_loss = mse_loss
                 print("Validation Loss is " + str(mse_loss /(val_batch_num+1)))
+                scheduler.step()
 
     def predict(self,model_path=None):
 
