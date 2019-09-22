@@ -3,11 +3,12 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score,f1_score,mean_squared_error
 import sys
-from pytorch_transformers import BertForMaskedLM,BertTokenizer
+from pytorch_transformers import BertForMaskedLM
 from pytorch_pretrained_bert import BertAdam
 import argparse
 from data_handler import *
-import torchsummary
+import torchnlp.nn as nn_nlp
+
 
 
 class RBERT(nn.Module):
@@ -29,6 +30,7 @@ class RBERT(nn.Module):
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
+        self.attention = nn_nlp.Attention(768)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
         self.lr = lr
@@ -75,7 +77,6 @@ class RBERT(nn.Module):
         input = input[0]
         #output_per_seq1, _ = self.bert_model(input[0].long())
         output_per_seq2, _ = self.bert_model(input[1].long())
-        sent_emb = (torch.mean(output_per_seq2,1))
         final_scores = []
         '''
         Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
@@ -85,9 +86,11 @@ class RBERT(nn.Module):
             #entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
             entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
             entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
+            _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),output_per_seq2[i].unsqueeze(0))
+            sent_attn = torch.sum(attention_score.squeeze(0).expand(768,39).t()*output_per_seq2[i],0)
             #diff = torch.sub(entity1,entity2)
             #prod = entity1*entity2
-            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_emb[i],entity2,entity2_max[0]),0)))
+            sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,entity2,entity2_max[0]),0)))
             final_out = self.final_linear(sent_out)
             final_scores.append(final_out)
         return torch.stack((final_scores))
