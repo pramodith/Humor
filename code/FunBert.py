@@ -105,7 +105,7 @@ class RBERT(nn.Module):
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
-        for epoch in range(5):
+        for epoch in range(10):
             total_prev_loss = 0
             for (batch_num, batch) in enumerate(train_dataloader):
                 # If gpu is available move to gpu.
