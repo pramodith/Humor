@@ -188,10 +188,10 @@ class RBERT(nn.Module):
                         locs = val_batch[2]
                         gt = val_batch[3]
                     final_scores = self.forward((input1,input2,locs))
-                    if self.task1 == 1:
+                    if self.task == 1:
                         mse_loss += mean_squared_error(final_scores.cpu().detach().squeeze(1),gt.cpu().detach())
 
-                    elif self.task2 == 2:
+                    elif self.task == 2:
                         mse_loss += loss(final_scores.squeeze(0),gt.long())
                         predictions.extend(torch.argmax(final_scores.squeeze(0)).tolist())
                         ground_truth.extend(gt.tolist())
