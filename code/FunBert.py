@@ -121,7 +121,7 @@ class RBERT(nn.Module):
         #self.bert_model.requires_grad = False
         #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters()), lr=self.lr,weight_decay=0.001)
         optimizer = optim.Adam(self.parameters(), lr=self.lr,
-                               weight_decay=0.001)
+                               weight_decay=0.0001)
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[5,6],gamma=0.1)
 
         if self.task == 1:
