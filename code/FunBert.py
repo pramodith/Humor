@@ -13,7 +13,8 @@ import torchnlp.nn as nn_nlp
 
 class RBERT(nn.Module):
 
-    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int):
+    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,
+                 test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int, lm_pretrain : str):
         '''
 
         :param train_file_path: Path to the train file
@@ -25,7 +26,8 @@ class RBERT(nn.Module):
 
         super(RBERT, self).__init__()
         self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
-        self.load_joke_lm_weights(lm_weights_file_path)
+        if lm_pretrain != 'true':
+            self.load_joke_lm_weights(lm_weights_file_path)
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
