@@ -108,7 +108,7 @@ class RBERT(nn.Module):
             output_per_seq2, _ = self.bert_model(input[1].long())
             prod = torch.mean(output_per_seq1 * output_per_seq2,1)
             diff = torch.mean(output_per_seq1 - output_per_seq2,1)
-            out = torch.relu(self.linear_reg1(torch.cat((prod,diff),1)))
+            out = torch.tanh(self.linear_reg1(torch.cat((prod,diff),1)))
             final_out = self.final_linear(out)
             final_scores.append(final_out)
 
