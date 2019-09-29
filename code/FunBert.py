@@ -99,7 +99,8 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         self.bert_model = self.bert_model.bert
-        optimizer = optim.Adam(self.parameters(), lr=self.lr,weight_decay=0.001)
+        #self.bert_model.requires_grad = False
+        optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters()), lr=self.lr,weight_decay=0.001)
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[2,4],gamma=0.1)
 
         loss = nn.MSELoss()
@@ -205,10 +206,13 @@ if __name__ == '__main__':
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default=False,required=False)
+    parser.add_argument("--lm_pretrain", type=str, default='true',required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     args = parser.parse_args()
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr,args.lm_weights_file_path)
-    #obj.pre_train_bert()
+    if args.lm_pretrain=='true':
+        obj.pre_train_bert()
+
     if args.predict=='true':
         obj.predict(args.model_file_path)
     else:
