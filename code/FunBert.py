@@ -213,7 +213,7 @@ if __name__ == '__main__':
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     parser.add_argument("--epochs", type=int, default=5, required=False)
     args = parser.parse_args()
-    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr,args.lm_weights_file_path,args.epochs)
+    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain)
     if args.lm_pretrain=='true':
         obj.pre_train_bert()
 
