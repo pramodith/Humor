@@ -163,9 +163,84 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
         y = df['meanGrade'].values
     edit = df['edit']
     X2 = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
-    X1 = [sent.replace("<","< ").replace("/>"," <") for i,sent in enumerate(X)]
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
+    replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
+
+    if mode == "train":
+        train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
+                                                                                            random_state=2019,
+                                                                                            test_size=0.2)
+        train2_inputs, validation2_inputs, _, _ = train_test_split(X2, y,
+                                                                                              random_state=2019,
+                                                                                              test_size=0.2)
+        train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
+                                                                           random_state=2019, test_size=0.2)
+
+        train1_inputs = torch.tensor(train1_inputs)
+        validation1_inputs = torch.tensor(validation1_inputs)
+        train2_inputs = torch.tensor(train2_inputs)
+        validation2_inputs = torch.tensor(validation2_inputs)
+        train_labels = torch.tensor(train_labels)
+        validation_labels = torch.tensor(validation_labels)
+        train_entity_locs = torch.tensor(train_entity_locs)
+        validation_entity_locs = torch.tensor(validation_entity_locs)
+
+        # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
+        # with an iterator the entire dataset does not need to be loaded into memory
+
+        train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_labels)
+        train_sampler = RandomSampler(train_data)
+        train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
+
+        validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_labels)
+        validation_sampler = SequentialSampler(validation_data)
+        validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
+        return train_dataloader, validation_dataloader
+
+    if mode == "test":
+        test1_input = torch.tensor(X1)
+        test2_input = torch.tensor(X2)
+        train_entity_locs = torch.tensor(replacement_locs)
+        id = torch.tensor(id)
+        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,id)
+        test_sampler = SequentialSampler(test_data)
+        test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
+
+        return test_data_loader
+
+def get_dataloaders_bert_task2(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
+    '''
+
+    This function creates pytorch dataloaders for fast and easy iteration over the dataset.
+
+    :param file_path: Path of the file containing train/test data
+    :param mode: Test mode or Train mode
+    :param train_batch_size: Size of the batch during training
+    :param test_batch_size: Size of the batch during testing
+    :return: Dataloaders
+    '''
+
+    # Read the data,tokenize and vectorize
+    df = pd.read_csv(file_path, sep=",")
+    id = df['id']
+
+    def get_modified_sentence(orginal_key : str, edit_key : str):
+        X = df[orginal_key].values
+        X = [sent.replace("\"","") for sent in X]
+        replaced = df[orginal_key].apply(lambda x: x[x.index("<"):x.index(">")+1])
+        edit = df[edit_key]
+        X = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
+        return X
+
+    X1 = get_modified_sentence("original1","edit1")
+    X2 = get_modified_sentence("original2","edit2")
+    X1,e1_locs = tokenize_bert(X1,True)
+    X2,e2_locs = tokenize_bert(X2,False)
+    if mode == 'train':
+        y = df['meanGrade1'] > df['meanGrade2']
+        y = [0 if label else 1 for label in y]
+
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
 
     if mode == "train":
