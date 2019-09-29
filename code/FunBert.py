@@ -138,6 +138,7 @@ class RBERT(nn.Module):
 
         for epoch in range(self.epochs):
             total_prev_loss = 0
+            '''
             for (batch_num, batch) in enumerate(train_dataloader):
                 # If gpu is available move to gpu.
                 if torch.cuda.is_available():
@@ -166,7 +167,7 @@ class RBERT(nn.Module):
                 print("Loss for batch" + str(batch_num) + ": " + str(loss_val.item()))
                 # Update weights according to the gradients computed.
                 optimizer.step()
-
+            '''
             # Don't compute gradients in validation step
             with torch.no_grad():
                 # Ensure that dropout behavior is correct.
@@ -193,7 +194,7 @@ class RBERT(nn.Module):
 
                     elif self.task == 2:
                         mse_loss += loss(final_scores.squeeze(0),gt.long())
-                        predictions.extend(torch.argmax(final_scores.squeeze(0)).tolist())
+                        predictions.extend(torch.argmax(final_scores.squeeze(0),1).tolist())
                         ground_truth.extend(gt.tolist())
 
                 if mse_loss < best_loss:
