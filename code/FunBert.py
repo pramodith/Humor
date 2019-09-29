@@ -13,7 +13,7 @@ import torchnlp.nn as nn_nlp
 
 class RBERT(nn.Module):
 
-    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,test_batch_size : int,lr : float, lm_weights_file_path : str):
+    def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int):
         '''
 
         :param train_file_path: Path to the train file
@@ -34,6 +34,7 @@ class RBERT(nn.Module):
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
         self.lr = lr
+        self.epochs = epochs
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
                   nn.Linear(768*3,100),
@@ -106,7 +107,7 @@ class RBERT(nn.Module):
         loss = nn.MSELoss()
         best_loss  = sys.maxsize
         train_dataloader,val_dataloader = get_dataloaders_bert(self.train_file_path,"train",self.train_batch_size)
-        for epoch in range(10):
+        for epoch in range(self.epochs):
             total_prev_loss = 0
             for (batch_num, batch) in enumerate(train_dataloader):
                 # If gpu is available move to gpu.
@@ -208,8 +209,9 @@ if __name__ == '__main__':
     parser.add_argument("--predict", type=str, default=False,required=False)
     parser.add_argument("--lm_pretrain", type=str, default='true',required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
+    parser.add_argument("--epochs", type=int, default=5, required=False)
     args = parser.parse_args()
-    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr,args.lm_weights_file_path)
+    obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,args.lr,args.lm_weights_file_path,args.epochs)
     if args.lm_pretrain=='true':
         obj.pre_train_bert()
 
