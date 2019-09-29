@@ -200,6 +200,8 @@ class RBERT(nn.Module):
                     torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
                     best_loss = mse_loss
                 print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
+                if self.task == 2:
+                    print ("Accuracy is " + str(accuracy_score(ground_truth,predictions)))
                 scheduler.step()
 
     def predict(self,model_path=None):
