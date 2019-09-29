@@ -26,8 +26,8 @@ class RBERT(nn.Module):
 
         super(RBERT, self).__init__()
         self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
-        #if lm_pretrain != 'true':
-        #    self.load_joke_lm_weights(lm_weights_file_path)
+        if lm_pretrain != 'true':
+            self.load_joke_lm_weights(lm_weights_file_path)
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
