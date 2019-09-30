@@ -135,6 +135,7 @@ class RBERT(nn.Module):
                                                                     self.train_batch_size)
 
         best_loss  = sys.maxsize
+        best_accuracy = sys.maxsize
 
         for epoch in range(self.epochs):
             total_prev_loss = 0
@@ -195,12 +196,16 @@ class RBERT(nn.Module):
                         mse_loss += loss(final_scores.squeeze(0),gt.long())
                         predictions.extend(torch.argmax(final_scores.squeeze(0),1).tolist())
                         ground_truth.extend(gt.tolist())
-
-                if mse_loss < best_loss:
-                    torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
-                    best_loss = mse_loss
-                print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
-                if self.task == 2:
+                if self.task == 1:
+                    if mse_loss < best_loss:
+                        torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
+                        best_loss = mse_loss
+                    print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
+                elif self.task == 2:
+                    accuracy = accuracy_score(ground_truth,predictions)
+                    if accuracy > best_accuracy:
+                        torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
+                        accuracy = best_accuracy
                     print ("Accuracy is " + str(accuracy_score(ground_truth,predictions)))
                 scheduler.step()
 
@@ -217,12 +222,15 @@ class RBERT(nn.Module):
             self.cuda()
         if model_path:
             self.load_state_dict(torch.load(model_path))
-        test_dataloader = get_dataloaders_bert(self.test_file_path,"test")
+        if self.task == 1:
+            test_dataloader = get_dataloaders_bert(self.test_file_path,"test")
+        else:
+            test_dataloader = get_dataloaders_bert_task2(self.test_file_path, "test")
         self.bert_model.eval()
         self.linear_reg1.eval()
         self.final_linear.eval()
         with torch.no_grad():
-            with open("task-1-output.csv","w+") as f:
+            with open("task-2-output.csv","w+") as f:
                 f.writelines("id,pred\n")
                 for ind,batch in enumerate(test_dataloader):
                     if torch.cuda.is_available():
@@ -236,6 +244,8 @@ class RBERT(nn.Module):
                         locs = batch[2]
                         id = batch[3]
                     final_scores = self.forward((input1,input2,locs)).view(-1)
+                    if self.task == 2:
+                        final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores):
                         f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
 
