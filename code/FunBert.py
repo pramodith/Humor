@@ -174,6 +174,7 @@ class RBERT(nn.Module):
                 predictions = []
                 ground_truth = []
                 self.bert_model.eval()
+                accuracy = 0
                 self.linear_reg1.eval()
                 self.final_linear.eval()
                 mse_loss = 0
@@ -196,16 +197,17 @@ class RBERT(nn.Module):
                         mse_loss += loss(final_scores.squeeze(0),gt.long())
                         predictions.extend(torch.argmax(final_scores.squeeze(0),1).tolist())
                         ground_truth.extend(gt.tolist())
+                print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
+
                 if self.task == 1:
                     if mse_loss < best_loss:
                         torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
                         best_loss = mse_loss
-                    print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
                 elif self.task == 2:
                     accuracy = accuracy_score(ground_truth,predictions)
                     if accuracy > best_accuracy:
                         torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
-                        accuracy = best_accuracy
+                        best_accuracy = accuracy
                     print ("Accuracy is " + str(accuracy_score(ground_truth,predictions)))
                 scheduler.step()
 
