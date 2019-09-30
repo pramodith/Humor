@@ -135,7 +135,7 @@ class RBERT(nn.Module):
                                                                     self.train_batch_size)
 
         best_loss  = sys.maxsize
-        best_accuracy = sys.maxsize
+        best_accuracy = -sys.maxsize
 
         for epoch in range(self.epochs):
             total_prev_loss = 0
