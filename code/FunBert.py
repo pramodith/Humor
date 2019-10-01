@@ -239,17 +239,16 @@ class RBERT(nn.Module):
                         input1 = batch[0].cuda()
                         input2 = batch[1].cuda()
                         locs = batch[2].cuda()
-                        id = batch[3].cuda()
+                        #id = batch[3].cuda()
                     else:
                         input1 = batch[0]
                         input2 = batch[1]
                         locs = batch[2]
-                        id = batch[3]
                     final_scores = self.forward((input1,input2,locs)).view(-1)
                     if self.task == 2:
                         final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores):
-                        f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
+                        f.writelines(cnt+ind*64+","+str(pred.item())+"\n")
 
 
 if __name__ == '__main__':
