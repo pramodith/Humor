@@ -244,11 +244,11 @@ class RBERT(nn.Module):
                         input1 = batch[0]
                         input2 = batch[1]
                         locs = batch[2]
-                    final_scores = self.forward((input1,input2,locs)).view(-1)
+                    final_scores = self.forward((input1,input2,locs))
                     if self.task == 2:
                         final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores):
-                        f.writelines(cnt+ind*64+","+str(pred.item())+"\n")
+                        f.writelines(str(cnt+ind*64)+","+str(pred.item())+"\n")
 
 
 if __name__ == '__main__':
@@ -260,7 +260,7 @@ if __name__ == '__main__':
     parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes.csv", required=False)
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
-    parser.add_argument("--predict", type=str, default=False,required=False)
+    parser.add_argument("--predict", type=str, default='true',required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false',required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     parser.add_argument("--task", type=int, default=2, required=False)
