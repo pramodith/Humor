@@ -248,7 +248,7 @@ class RBERT(nn.Module):
                     if self.task == 2:
                         final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores):
-                        f.writelines(str(cnt+ind*64)+","+str(pred.item())+"\n")
+                        f.writelines(str(cnt+ind*64)+","+str(pred.item()+1)+"\n")
 
 
 if __name__ == '__main__':
