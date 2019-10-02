@@ -128,8 +128,8 @@ def tokenize_bert(X: list, org : bool):
     X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
 
     # MAX_SEQ_LEN
-    MAX_LEN = max([len(x) for x in X])
-
+    #MAX_LEN = max([len(x) for x in X])+1
+    MAX_LEN = 37
     #Pad sequences to make them all eqally long
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
 
