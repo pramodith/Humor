@@ -163,6 +163,7 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
         y = df['meanGrade'].values
     edit = df['edit']
     X2 = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
+    X1 = [sent.replace("<","< ").replace("/>"," <") for i,sent in enumerate(X)]
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
