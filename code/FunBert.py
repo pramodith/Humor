@@ -25,15 +25,16 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased',output_hidden_states=True)
         if lm_pretrain != 'true':
-            self.load_joke_lm_weights(lm_weights_file_path)
+            pass
+            #self.load_joke_lm_weights(lm_weights_file_path)
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
-        self.lstm = nn.LSTM(768,300)
-        self.attention = nn_nlp.Attention(300)
+        self.lstm = nn.LSTM(768*3,768)
+        self.attention = nn_nlp.Attention(768)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
         self.lr = lr
@@ -41,7 +42,7 @@ class RBERT(nn.Module):
         self.epochs = epochs
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(300*3,100),
+                  nn.Linear(768*3,100),
                   )
         if self.task == 1:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
@@ -75,6 +76,8 @@ class RBERT(nn.Module):
         print("LM training done")
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
 
+    def hook_encoder_bert(self,input,output):
+        return output
 
     def forward(self, *input):
         '''
@@ -86,7 +89,8 @@ class RBERT(nn.Module):
         if self.task == 1:
             input = input[0]
             #output_per_seq1, _ = self.bert_model(input[0].long())
-            output_per_seq2, _ = self.bert_model(input[1].long())
+            output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long())
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[5],attention_layer_inps[9]),2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
             output_per_seq2,_ = self.lstm(output_per_seq2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -99,7 +103,7 @@ class RBERT(nn.Module):
                 entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),output_per_seq2[i].unsqueeze(0))
-                sent_attn = torch.sum(attention_score.squeeze(0).expand(300,-1).t()*output_per_seq2[i],0)
+                sent_attn = torch.sum(attention_score.squeeze(0).expand(768,-1).t()*output_per_seq2[i],0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
                 sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,entity2,entity2_max[0]),0)))
