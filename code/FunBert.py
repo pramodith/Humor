@@ -87,9 +87,13 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             input = input[0]
-            #output_per_seq1, _ = self.bert_model(input[0].long())
+            output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long())
+            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[7], attention_layer_inps[10]), 2)
+            output_per_seq1 = output_per_seq1.transpose(0, 1)
+            output_per_seq1, _ = self.lstm(output_per_seq1)
+            output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[5],attention_layer_inps[9]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[7],attention_layer_inps[10]),2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
             output_per_seq2,_ = self.lstm(output_per_seq2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -98,14 +102,15 @@ class RBERT(nn.Module):
             '''
             for (i, loc) in enumerate(input[2]):
                 # +1 is to ensure that the symbol token is not considered
-                #entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
+                entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
                 entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),output_per_seq2[i].unsqueeze(0))
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768,-1).t()*output_per_seq2[i],0)
-                #diff = torch.sub(entity1,entity2)
-                #prod = entity1*entity2
-                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,entity2,entity2_max[0]),0)))
+                diff = torch.sub(entity1,entity2)
+                prod = entity1*entity2
+                #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,entity2,entity2_max[0]),0)))
+                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
                 final_out = self.final_linear(sent_out)
                 final_scores.append(final_out)
 
@@ -126,9 +131,9 @@ class RBERT(nn.Module):
             self.cuda()
         self.bert_model = self.bert_model.bert
         #self.bert_model.requires_grad = False
-        optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
-        #optimizer = optim.Adam(self.parameters(), lr=self.lr,
-        #                       weight_decay=0.001)
+        #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr,
+                               weight_decay=0.001)
         #scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[3,5],gamma=0.1)
 
         if self.task == 1:
@@ -255,7 +260,7 @@ class RBERT(nn.Module):
                     if self.task == 2:
                         final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores):
-                        f.writelines(str(id[cnt])+","+str(pred.item())+"\n")
+                        f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
 
 
 if __name__ == '__main__':
