@@ -239,14 +239,14 @@ class RBERT(nn.Module):
         self.linear_reg1.eval()
         self.final_linear.eval()
         with torch.no_grad():
-            with open("task-2-output.csv","w+") as f:
+            with open("task-1-output.csv","w+") as f:
                 f.writelines("id,pred\n")
                 for ind,batch in enumerate(test_dataloader):
                     if torch.cuda.is_available():
                         input1 = batch[0].cuda()
                         input2 = batch[1].cuda()
                         locs = batch[2].cuda()
-                        #id = batch[3].cuda()
+                        id = batch[3].cuda()
                     else:
                         input1 = batch[0]
                         input2 = batch[1]
@@ -255,7 +255,7 @@ class RBERT(nn.Module):
                     if self.task == 2:
                         final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores):
-                        f.writelines(str(cnt+ind*64)+","+str(pred.item()+1)+"\n")
+                        f.writelines(str(id[cnt])+","+str(pred.item())+"\n")
 
 
 if __name__ == '__main__':
