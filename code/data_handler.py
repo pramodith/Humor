@@ -7,6 +7,20 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 import json
 from pytorch_transformers import BertTokenizer
 
+def convert_task2_to_task1():
+    df2 = pd.read_csv("../data/task-2/train.csv")
+    df1 = pd.read_csv("../data/task-1/train.csv")
+    df2_1 = df2.drop(columns=['edit2','grades2','original2','meanGrade2','label'])
+    df2_1.rename({"edit1":"edit","grades1":"grades","original1":"original","meanGrade1":"meanGrade"},axis='columns',inplace=True)
+    df2_1['id'] = df2_1['id'].apply(lambda x : x.split("-")[0])
+    df2_2 = df2.drop(columns=['edit1','grades1','original1','meanGrade1','label'])
+    df2_2.rename({"edit2": "edit", "grades2": "grades", "original2": "original", "meanGrade2": "meanGrade"},axis='columns',inplace=True)
+    df2_2['id'] = df2_2['id'].apply(lambda x : x.split("-")[1])
+    combined = pd.concat([df1,df2_1,df2_2])
+    combined.drop_duplicates(subset=['id'],keep='last',inplace=True)
+    combined.to_csv("../data/task-1/combined.csv",index=False)
+
+
 def create_vocab_dict(X : list):
     sentences = [X[i].split(" ") for i in range(len(X))]
     words = [word for sent in sentences for word in sent]
@@ -287,4 +301,5 @@ def get_dataloaders_bert_task2(file_path : str ,mode="train",train_batch_size=64
 
 
 if __name__ == "__main__":
-    get_dataloaders("../data/task-1/train.csv")
+    convert_task2_to_task1()
+    #get_dataloaders("../data/task-1/train.csv")
