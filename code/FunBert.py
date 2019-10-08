@@ -27,8 +27,7 @@ class RBERT(nn.Module):
         super(RBERT, self).__init__()
         self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased',output_hidden_states=True)
         if lm_pretrain != 'true':
-            pass
-            #self.load_joke_lm_weights(lm_weights_file_path)
+            self.load_joke_lm_weights(lm_weights_file_path)
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
@@ -127,10 +126,10 @@ class RBERT(nn.Module):
             self.cuda()
         self.bert_model = self.bert_model.bert
         #self.bert_model.requires_grad = False
-        #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters()), lr=self.lr,weight_decay=0.001)
-        optimizer = optim.Adam(self.parameters(), lr=self.lr,
-                               weight_decay=0.0001)
-        scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[3,5],gamma=0.1)
+        optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
+        #optimizer = optim.Adam(self.parameters(), lr=self.lr,
+        #                       weight_decay=0.001)
+        #scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[3,5],gamma=0.1)
 
         if self.task == 1:
             loss = nn.MSELoss()
@@ -217,7 +216,7 @@ class RBERT(nn.Module):
                         torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
                         best_accuracy = accuracy
                     print ("Accuracy is " + str(accuracy_score(ground_truth,predictions)))
-                scheduler.step()
+                #scheduler.step()
 
     def predict(self,model_path=None):
 
