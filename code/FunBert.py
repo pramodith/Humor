@@ -33,7 +33,7 @@ class RBERT(nn.Module):
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
-        self.lstm = nn.LSTM(768*3,768)
+        self.lstm = nn.LSTM(768*3,384,bidirectional=True,dropout=0.3)
         self.attention = nn_nlp.Attention(768)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
@@ -89,12 +89,12 @@ class RBERT(nn.Module):
         if self.task == 1:
             input = input[0]
             output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long())
-            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[7], attention_layer_inps[10]), 2)
+            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[11]), 2)
             output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq1, _ = self.lstm(output_per_seq1)
             output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[7],attention_layer_inps[10]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[3],attention_layer_inps[11]),2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
             output_per_seq2,_ = self.lstm(output_per_seq2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
