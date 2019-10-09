@@ -33,7 +33,7 @@ class RBERT(nn.Module):
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
-        self.lstm = nn.LSTM(768*3,384,bidirectional=True,dropout=0.3)
+        self.lstm = nn.LSTM(768*3,384,bidirectional=True)
         self.attention = nn_nlp.Attention(768)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
@@ -106,7 +106,7 @@ class RBERT(nn.Module):
                 entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
                 entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-                imp_seq = torch.cat((output_per_seq2[i,0:loc[2]+1],output_per_seq2[i,loc[3]:]),0)
+                imp_seq = torch.cat((output_per_seq1[i,0:loc[2]+1],output_per_seq1[i,loc[3]:]),0)
                 _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),imp_seq.unsqueeze(0))
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768,-1).t()*imp_seq,0)
                 diff = torch.sub(entity1,entity2)
