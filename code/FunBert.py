@@ -27,7 +27,8 @@ class RBERT(nn.Module):
         super(RBERT, self).__init__()
         self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased',output_hidden_states=True)
         if lm_pretrain != 'true':
-            self.load_joke_lm_weights(lm_weights_file_path)
+            pass
+            #self.load_joke_lm_weights(lm_weights_file_path)
         self.train_batch_size = train_batch_size
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
@@ -105,8 +106,9 @@ class RBERT(nn.Module):
                 entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
                 entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-                _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),output_per_seq2[i].unsqueeze(0))
-                sent_attn = torch.sum(attention_score.squeeze(0).expand(768,-1).t()*output_per_seq2[i],0)
+                imp_seq = torch.cat((output_per_seq2[i,0:loc[2]+1],output_per_seq2[i,loc[3]:]),0)
+                _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),imp_seq.unsqueeze(0))
+                sent_attn = torch.sum(attention_score.squeeze(0).expand(768,-1).t()*imp_seq,0)
                 diff = torch.sub(entity1,entity2)
                 prod = entity1*entity2
                 #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,entity2,entity2_max[0]),0)))
