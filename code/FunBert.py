@@ -136,7 +136,7 @@ class RBERT(nn.Module):
         #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
         optimizer = optim.Adam(self.parameters(), lr=self.lr,
                                weight_decay=0.001)
-        #scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[3,5],gamma=0.1)
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[2,5],gamma=0.1)
 
         if self.task == 1:
             loss = nn.MSELoss()
@@ -223,7 +223,7 @@ class RBERT(nn.Module):
                         torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
                         best_accuracy = accuracy
                     print ("Accuracy is " + str(accuracy_score(ground_truth,predictions)))
-                #scheduler.step()
+                scheduler.step()
 
     def predict(self,model_path=None):
 
