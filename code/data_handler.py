@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import json
-from pytorch_transformers import BertTokenizer
+from pytorch_transformers import BertTokenizer,DistilBertTokenizer
 
 def convert_task2_to_task1():
     df2 = pd.read_csv("../data/task-2/train.csv")
@@ -49,7 +49,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     jokes_df = pd.read_csv(file_path)
     jokes = jokes_df['Joke']
     jokes = "[CLS] " + jokes + " [SEP]"
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
     X = [tokenizer.encode(sent) for sent in jokes]
     MAX_LEN = max([len(sent) for sent in jokes])
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')

@@ -25,7 +25,7 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = DistilBertForMaskedLM.from_pretrained('distilbert-base-uncased',output_hidden_states=True)
+        self.bert_model = DistilBertForMaskedLM.from_pretrained('distilbert-base-cased',output_hidden_states=True)
         if lm_pretrain != 'true':
             pass
             #self.load_joke_lm_weights(lm_weights_file_path)
