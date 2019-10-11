@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import accuracy_score,f1_score,mean_squared_error
 import sys
-from pytorch_transformers import BertForMaskedLM
+from pytorch_transformers import BertForMaskedLM,DistilBertForMaskedLM
 from pytorch_pretrained_bert import BertAdam
 import argparse
 from data_handler import *
@@ -25,7 +25,7 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased',output_hidden_states=True)
+        self.bert_model = DistilBertForMaskedLM.from_pretrained('distilbert-base-uncased',output_hidden_states=True)
         if lm_pretrain != 'true':
             pass
             #self.load_joke_lm_weights(lm_weights_file_path)
@@ -88,13 +88,13 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             input = input[0]
-            output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long())
-            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[11]), 2)
+            output_per_seq1,attention_layer_inps = self.bert_model(input[0].long())
+            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[5]), 2)
             output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq1, _ = self.lstm(output_per_seq1)
             output_per_seq1 = output_per_seq1.transpose(0, 1)
-            output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[3],attention_layer_inps[11]),2)
+            output_per_seq2,attention_layer_inps = self.bert_model(input[1].long())
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[3],attention_layer_inps[5]),2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
             output_per_seq2,_ = self.lstm(output_per_seq2)
             output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -131,7 +131,8 @@ class RBERT(nn.Module):
     def train(self,mode=True):
         if torch.cuda.is_available():
             self.cuda()
-        self.bert_model = self.bert_model.bert
+        #self.bert_model = self.bert_model.bert
+        self.bert_model = self.bert_model.distilbert
         #self.bert_model.requires_grad = False
         #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
         optimizer = optim.Adam(self.parameters(), lr=self.lr,
