@@ -89,7 +89,7 @@ class RBERT(nn.Module):
         '''
         final_scores = []
 
-        if self.task:
+        if self.task==1:
             input = input[0]
             #output_per_seq1,attention_layer_inps = self.bert_model(input[0].long())
             #output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[5]), 2)
@@ -120,7 +120,37 @@ class RBERT(nn.Module):
                 final_out = self.final_linear(sent_out)
                 final_scores.append(final_out)
 
-        elif self.task == 2:
+        if self.task==2:
+            input = input[0]
+            output_per_seq2,attention_layer_inps = self.bert_model(input[1].long())
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[3],attention_layer_inps[5]),2)
+
+            '''
+            Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
+            '''
+            for (i, loc) in enumerate(input[2]):
+                # +1 is to ensure that the symbol token is not considered
+                #entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
+                if input[3]==1:
+                    ent_ind = 0
+                else:
+                    ent_ind = 1
+
+                entity2 = torch.mean(output_per_seq2[i, loc[ent_ind] + 1:loc[ent_ind+1]], 0)
+                entity2_max = torch.max(output_per_seq2[i, loc[ent_ind] + 1:loc[ent_ind+1]], 0)
+                imp_seq = torch.cat((output_per_seq2[i,0:loc[ent_ind]+1],output_per_seq2[i,loc[ent_ind+1]:]),0)
+
+                _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),imp_seq.unsqueeze(0))
+                sent_attn = torch.sum(attention_score.squeeze(0).expand(768*3,-1).t()*imp_seq,0)
+                #diff = torch.sub(entity1,entity2)
+                #prod = entity1*entity2
+                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2_max[0]),0)))
+                #sent_out = torch.tanh(self.linear_reg1(sent_attn))
+                #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
+                final_out = self.final_linear(sent_out)
+                final_scores.append(final_out)
+
+        elif self.task == 3:
             input = input[0]
             output_per_seq1, _ = self.bert_model(input[0].long())
             output_per_seq2, _ = self.bert_model(input[1].long())
@@ -264,8 +294,8 @@ class RBERT(nn.Module):
                         input2 = batch[1]
                         locs = batch[2]
                     if self.task == 2:
-                        final_scores_1 = self.forward((input1,input1,locs))
-                        final_scores_2 = self.forward((input2,input2,locs))
+                        final_scores_1 = self.forward((input1,input1,locs,torch.tensor(1)))
+                        final_scores_2 = self.forward((input2,input2,locs,torch.tensor(2)))
                     #if self.task == 2:
                     #    final_scores = torch.argmax(final_scores.squeeze(0),1)
                     for cnt,pred in enumerate(final_scores_1):
