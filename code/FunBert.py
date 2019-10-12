@@ -42,7 +42,7 @@ class RBERT(nn.Module):
         self.epochs = epochs
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(768*3,100),
+                  nn.Linear(768*9,100),
                   )
         if self.task == 1:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
@@ -88,8 +88,8 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             input = input[0]
-            output_per_seq1,attention_layer_inps = self.bert_model(input[0].long())
-            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[5]), 2)
+            #output_per_seq1,attention_layer_inps = self.bert_model(input[0].long())
+            #output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[5]), 2)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
             #output_per_seq1, _ = self.lstm(output_per_seq1)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
@@ -105,14 +105,14 @@ class RBERT(nn.Module):
                 # +1 is to ensure that the symbol token is not considered
                 #entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
                 entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-                #entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-                imp_seq = torch.cat((output_per_seq1[i,0:loc[2]+1],output_per_seq1[i,loc[3]:]),0)
+                entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
+                imp_seq = torch.cat((output_per_seq2[i,0:loc[2]+1],output_per_seq2[i,loc[3]:]),0)
                 _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),imp_seq.unsqueeze(0))
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768*3,-1).t()*imp_seq,0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
-                #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,entity2,entity2_max[0]),0)))
-                sent_out = torch.tanh(self.linear_reg1(sent_attn))
+                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2_max[0]),0)))
+                #sent_out = torch.tanh(self.linear_reg1(sent_attn))
                 #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
                 final_out = self.final_linear(sent_out)
                 final_scores.append(final_out)
