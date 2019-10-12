@@ -14,7 +14,7 @@ import torchnlp.nn as nn_nlp
 class RBERT(nn.Module):
 
     def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,
-                 test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int, lm_pretrain : str, task : int):
+                 test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int, lm_pretrain : str, task : int, train_scratch : str, model_path : str):
         '''
 
         :param train_file_path: Path to the train file
@@ -48,6 +48,9 @@ class RBERT(nn.Module):
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
         else:
             self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(100, 2))
+
+        if train_scratch == 'true':
+            self.load_state_dict(torch.load(model_path))
 
     def load_joke_lm_weights(self,lm_path : str):
         self.bert_model.load_state_dict(torch.load(lm_path))
@@ -260,12 +263,17 @@ class RBERT(nn.Module):
                         input1 = batch[0]
                         input2 = batch[1]
                         locs = batch[2]
-                    final_scores = self.forward((input1,input2,locs))
                     if self.task == 2:
-                        final_scores = torch.argmax(final_scores.squeeze(0),1)
-                    for cnt,pred in enumerate(final_scores):
-                        f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
-
+                        final_scores_1 = self.forward((input1,input1,locs))
+                        final_scores_2 = self.forward((input2,input2,locs))
+                    #if self.task == 2:
+                    #    final_scores = torch.argmax(final_scores.squeeze(0),1)
+                    for cnt,pred in enumerate(final_scores_1):
+                        if final_scores_1[cnt]>final_scores_2[cnt]:
+                            #f.writelines(str(id[cnt].item())+","+str(pred.item())+"\n")
+                            f.writelines(str(cnt) + "," + str(1) + "\n")
+                        else:
+                            f.writelines(str(cnt) + "," + str(2) + "\n")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -279,12 +287,13 @@ if __name__ == '__main__':
     parser.add_argument("--predict", type=str, default='re',required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false',required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
+    parser.add_argument("--train_scratch", type=str, default='false',required=False)
     parser.add_argument("--task", type=int, default=1, required=False)
     parser.add_argument("--epochs", type=int, default=5, required=False)
     args = parser.parse_args()
 
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,
-                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task)
+                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_path)
 
     if args.lm_pretrain=='true':
         obj.pre_train_bert()
