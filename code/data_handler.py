@@ -49,7 +49,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     jokes_df = pd.read_csv(file_path)
     jokes = jokes_df['Joke']
     jokes = "[CLS] " + jokes + " [SEP]"
-    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     X = [tokenizer.encode(sent) for sent in jokes]
     MAX_LEN = max([len(sent) for sent in jokes])
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
@@ -247,6 +247,7 @@ def get_dataloaders_bert_task2(file_path : str ,mode="train",train_batch_size=64
         edit = df[edit_key]
         X = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
         return X
+
 
     X1 = get_modified_sentence("original1","edit1")
     X2 = get_modified_sentence("original2","edit2")

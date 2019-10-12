@@ -25,7 +25,7 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = DistilBertForMaskedLM.from_pretrained('distilbert-base-uncased',output_hidden_states=True)
+        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased',output_hidden_states=True)
         if lm_pretrain != 'true':
             pass
             #self.load_joke_lm_weights(lm_weights_file_path)
@@ -97,7 +97,7 @@ class RBERT(nn.Module):
             #output_per_seq1, _ = self.lstm(output_per_seq1)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[3],attention_layer_inps[5]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
             #output_per_seq2,_ = self.lstm(output_per_seq2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -114,7 +114,7 @@ class RBERT(nn.Module):
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768*3,-1).t()*imp_seq,0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
-                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2_max[0]),0)))
+                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2),0)))
                 #sent_out = torch.tanh(self.linear_reg1(sent_attn))
                 #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
                 final_out = self.final_linear(sent_out)
@@ -123,7 +123,7 @@ class RBERT(nn.Module):
         if self.task==2:
             input = input[0]
             output_per_seq2,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[3],attention_layer_inps[5]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
 
             '''
             Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
@@ -134,7 +134,7 @@ class RBERT(nn.Module):
                 if input[3]==1:
                     ent_ind = 0
                 else:
-                    ent_ind = 1
+                    ent_ind = 2
 
                 entity2 = torch.mean(output_per_seq2[i, loc[ent_ind] + 1:loc[ent_ind+1]], 0)
                 entity2_max = torch.max(output_per_seq2[i, loc[ent_ind] + 1:loc[ent_ind+1]], 0)
@@ -166,7 +166,7 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         #self.bert_model = self.bert_model.bert
-        self.bert_model = self.bert_model.distilbert
+        self.bert_model = self.bert_model.bert
         #self.bert_model.requires_grad = False
         #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
         optimizer = optim.Adam(self.parameters(), lr=self.lr,
@@ -268,7 +268,7 @@ class RBERT(nn.Module):
         :return:
 
         '''
-        self.bert_model = self.bert_model.distilbert
+        self.bert_model = self.bert_model.bert
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
