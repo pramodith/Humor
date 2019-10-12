@@ -49,7 +49,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     jokes_df = pd.read_csv(file_path)
     jokes = jokes_df['Joke']
     jokes = "[CLS] " + jokes + " [SEP]"
-    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
+    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     X = [tokenizer.encode(sent) for sent in jokes]
     MAX_LEN = max([len(sent) for sent in jokes])
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
@@ -143,7 +143,7 @@ def tokenize_bert(X: list, org : bool):
 
     # MAX_SEQ_LEN
     #MAX_LEN = max([len(x) for x in X])+1
-    MAX_LEN = 37
+    MAX_LEN = 50
     #Pad sequences to make them all eqally long
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
 
