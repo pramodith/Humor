@@ -44,7 +44,7 @@ class RBERT(nn.Module):
                   nn.Dropout(0.3),
                   nn.Linear(768*9,100),
                   )
-        if self.task == 1:
+        if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
         else:
             self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(100, 2))
@@ -89,7 +89,7 @@ class RBERT(nn.Module):
         '''
         final_scores = []
 
-        if self.task == 1:
+        if self.task:
             input = input[0]
             #output_per_seq1,attention_layer_inps = self.bert_model(input[0].long())
             #output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[5]), 2)
@@ -238,7 +238,7 @@ class RBERT(nn.Module):
         :return:
 
         '''
-        self.bert_model = self.bert_model.bert
+        self.bert_model = self.bert_model.distilbert
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
@@ -258,7 +258,7 @@ class RBERT(nn.Module):
                         input1 = batch[0].cuda()
                         input2 = batch[1].cuda()
                         locs = batch[2].cuda()
-                        id = batch[3].cuda()
+                        #id = batch[3].cuda()
                     else:
                         input1 = batch[0]
                         input2 = batch[1]
@@ -293,7 +293,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,
-                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_path)
+                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_file_path)
 
     if args.lm_pretrain=='true':
         obj.pre_train_bert()
