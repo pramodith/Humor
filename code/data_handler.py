@@ -251,7 +251,7 @@ def get_dataloaders_bert_task2(file_path : str ,mode="train",train_batch_size=64
     X1 = get_modified_sentence("original1","edit1")
     X2 = get_modified_sentence("original2","edit2")
     X1,e1_locs = tokenize_bert(X1,True)
-    X2,e2_locs = tokenize_bert(X2,False)
+    X2,e2_locs = tokenize_bert(X2,True)
     if mode == 'train':
         y = df['meanGrade1'] > df['meanGrade2']
         y = [0 if label else 1 for label in y]
