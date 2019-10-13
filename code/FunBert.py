@@ -9,6 +9,11 @@ import argparse
 from data_handler import *
 import torchnlp.nn as nn_nlp
 
+torch.manual_seed(0)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+
 
 
 class RBERT(nn.Module):
@@ -96,7 +101,7 @@ class RBERT(nn.Module):
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
             #output_per_seq1, _ = self.lstm(output_per_seq1)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
-            output_per_seq2,attention_layer_inps = self.bert_model(input[1].long())
+            output_per_seq2, _ ,attention_layer_inps = self.bert_model(input[1].long())
             output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
             #output_per_seq2,_ = self.lstm(output_per_seq2)
@@ -122,7 +127,7 @@ class RBERT(nn.Module):
 
         if self.task==2:
             input = input[0]
-            output_per_seq2,attention_layer_inps = self.bert_model(input[1].long())
+            output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long())
             output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
 
             '''
