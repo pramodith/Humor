@@ -49,7 +49,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     jokes_df = pd.read_csv(file_path)
     jokes = jokes_df['Joke']
     jokes = "[CLS] " + jokes + " [SEP]"
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     X = [tokenizer.encode(sent) for sent in jokes]
     MAX_LEN = max([len(sent) for sent in jokes])
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
@@ -135,7 +135,7 @@ def tokenize_bert(X: list, org : bool):
     sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
 
     # Load the tokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
     # Tokenize and vectorize
     tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]

@@ -30,7 +30,7 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-cased',output_hidden_states=True)
+        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased',output_hidden_states=True)
         if lm_pretrain != 'true':
             pass
             #self.load_joke_lm_weights(lm_weights_file_path)
@@ -39,7 +39,7 @@ class RBERT(nn.Module):
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
         #self.lstm = nn.LSTM(768*3,768,bidirectional=False)
-        self.attention = nn_nlp.Attention(768)
+        self.attention = nn_nlp.Attention(768*2)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
         self.lr = lr
@@ -47,7 +47,7 @@ class RBERT(nn.Module):
         self.epochs = epochs
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(768*3,100),
+                  nn.Linear(768*6,100),
                   )
         if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
@@ -102,7 +102,7 @@ class RBERT(nn.Module):
             #output_per_seq1, _ = self.lstm(output_per_seq1)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2, _ ,attention_layer_inps = self.bert_model(input[1].long())
-            #output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[11]),2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
             #output_per_seq2,_ = self.lstm(output_per_seq2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -116,7 +116,7 @@ class RBERT(nn.Module):
                 entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
                 imp_seq = torch.cat((output_per_seq2[i,0:loc[2]+1],output_per_seq2[i,loc[3]:]),0)
                 _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),imp_seq.unsqueeze(0))
-                sent_attn = torch.sum(attention_score.squeeze(0).expand(768,-1).t()*imp_seq,0)
+                sent_attn = torch.sum(attention_score.squeeze(0).expand(768*2,-1).t()*imp_seq,0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
                 sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2),0)))
