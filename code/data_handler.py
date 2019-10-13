@@ -135,7 +135,7 @@ def tokenize_bert(X: list, org : bool):
     sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
 
     # Load the tokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
 
     # Tokenize and vectorize
     tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
