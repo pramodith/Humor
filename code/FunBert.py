@@ -47,7 +47,7 @@ class RBERT(nn.Module):
         self.epochs = epochs
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(768*9,100),
+                  nn.Linear(768*3,100),
                   )
         if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
@@ -102,7 +102,7 @@ class RBERT(nn.Module):
             #output_per_seq1, _ = self.lstm(output_per_seq1)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2, _ ,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
+            #output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[4],attention_layer_inps[9]),2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
             #output_per_seq2,_ = self.lstm(output_per_seq2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -176,7 +176,7 @@ class RBERT(nn.Module):
         #optimizer = optim.Adam(list(self.linear_reg1.parameters())+list(self.final_linear.parameters())+list(self.lstm.parameters())+list(self.attention.parameters()), lr=self.lr,weight_decay=0.001)
         optimizer = optim.Adam(self.parameters(), lr=self.lr,
                                weight_decay=0.001)
-        scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[2,5],gamma=0.1)
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer,milestones=[3,5],gamma=0.1)
 
         if self.task == 1:
             loss = nn.MSELoss()
