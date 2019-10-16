@@ -39,7 +39,7 @@ class RBERT(nn.Module):
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
         #self.lstm = nn.LSTM(768*3,768,bidirectional=False)
-        self.attention = nn_nlp.Attention(768*3)
+        self.attention = nn_nlp.Attention(768*2)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
         self.lr = lr
@@ -47,7 +47,7 @@ class RBERT(nn.Module):
         self.epochs = epochs
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(768*9,100),
+                  nn.Linear(768*6,100),
                   )
         if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
@@ -102,7 +102,7 @@ class RBERT(nn.Module):
             #output_per_seq1, _ = self.lstm(output_per_seq1)
             #output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2, _ ,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[10],attention_layer_inps[11]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[8]),2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
             #output_per_seq2,_ = self.lstm(output_per_seq2)
             #output_per_seq2 = output_per_seq2.transpose(0,1)
@@ -128,7 +128,7 @@ class RBERT(nn.Module):
         if self.task==2:
             input = input[0]
             output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long())
-            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[10],attention_layer_inps[11]),2)
+            output_per_seq2 = torch.cat((output_per_seq2,attention_layer_inps[8]),2)
 
             '''
             Obtain the vectors that represent the entities and average them followed by a Tanh and a linear layer.
