@@ -53,7 +53,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     X = [tokenizer.encode(sent) for sent in jokes]
     MAX_LEN = max([len(sent) for sent in jokes])
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
-    X = torch.tensor(X)
+    X = torch.tensor(X)[:,:150]
     dataset = TensorDataset(torch.tensor(X))
     sampler = RandomSampler(dataset)
     data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=True)
