@@ -59,6 +59,40 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=True)
     return data_loader
 
+def get_dataloaders_joke_classification(file_path : str,train_batch_size=64,test_batch_size = 64,mode = 'train'):
+    df = pd.read_csv(file_path,sep=',')
+    X = df['Joke'].values
+    X,_ = tokenize_bert(X,False)
+    y = df['label'].values
+
+    if mode == "train":
+        train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X, y,
+                                                                                              random_state=2019,
+                                                                                              test_size=0.2)
+        train1_inputs = torch.tensor(train1_inputs)
+        train_labels = torch.tensor(train_labels)
+        validation1_inputs = torch.tensor(validation1_inputs)
+        validation_labels = torch.tensor(validation_labels)
+
+        # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
+        # with an iterator the entire dataset does not need to be loaded into memory
+
+        train_data = TensorDataset(train1_inputs,train_labels)
+        train_sampler = RandomSampler(train_data)
+        train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
+
+        validation_data = TensorDataset(validation1_inputs, validation_labels)
+        validation_sampler = SequentialSampler(validation_data)
+        validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
+        return train_dataloader, validation_dataloader
+
+    if mode == "test":
+        test_data = TensorDataset(torch.tensor(X), torch.tensor(id))
+        test_sampler = SequentialSampler(test_data)
+        test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
+        return test_data_loader
+
+
 
 def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
     df = pd.read_csv(file_path, sep=",")

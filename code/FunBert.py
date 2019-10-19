@@ -19,7 +19,8 @@ torch.backends.cudnn.benchmark = False
 class RBERT(nn.Module):
 
     def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,
-                 test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int, lm_pretrain : str, task : int, train_scratch : str, model_path : str):
+                 test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int, lm_pretrain : str, task : int, train_scratch : str, model_path : str,
+                 joke_classification_path : str):
         '''
 
         :param train_file_path: Path to the train file
@@ -42,9 +43,11 @@ class RBERT(nn.Module):
         self.attention = nn_nlp.Attention(768*2)
         self.dev_file_path = dev_file_path
         self.test_file_path = test_file_path
+        self.joke_classification_path = joke_classification_path
         self.lr = lr
         self.task = task
         self.epochs = epochs
+        self.linear_joke = nn.Sequential(nn.Dropout(0.3),nn.Linear(768,2))
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
                   nn.Linear(768*6,100),
@@ -83,6 +86,57 @@ class RBERT(nn.Module):
                     break
         print("LM training done")
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
+
+    def train_joke_classification(self):
+        optimizer = optim.Adam(list(self.bert_model.bert.parameters())+list(self.linear_joke.parameters()), lr=self.lr,weight_decay=0.001)
+        train_dataloader, val_dataloader = get_dataloaders_joke_classification(self.joke_classification_path)
+        best_accuracy = 0
+        loss = nn.CrossEntropyLoss()
+        loss_val = 0
+        print("Training Joke Model")
+        if torch.cuda.is_available():
+            self.bert_model.cuda()
+        for epoch in range(self.epochs):
+            print("Epoch : " +str(epoch))
+            for ind,batch in enumerate(train_dataloader):
+                self.bert_model.bert.train()
+                self.linear_joke.train()
+                optimizer.zero_grad()
+                if torch.cuda.is_available():
+                    inp = batch[0].cuda()
+                    gt = batch[1].cuda()
+                else:
+                    inp = batch[0]
+                    gt = batch[1]
+                outputs,_,_ = self.bert_model.bert(inp)
+                outputs = self.linear_joke(outputs[:,0,:])
+                loss_val += loss(outputs.squeeze(0), gt.long())
+                loss_val.backward()
+                print("Loss is :" + str(loss_val.item()))
+                optimizer.step()
+
+            for ind,batch in enumerate(val_dataloader):
+                predictions = []
+                ground_truth = []
+                self.bert_model.bert.eval()
+                self.linear_joke.eval()
+                optimizer.zero_grad()
+                if torch.cuda.is_available():
+                    inp = batch[0].cuda()
+                    gt = batch[1].cuda()
+                else:
+                    inp = batch[0]
+                    gt = batch[1]
+                outputs,_,_ = self.bert_model.bert(inp)
+                outputs = self.linear_joke(outputs[:,0,:])
+                predictions.extend(torch.argmax(outputs.squeeze(0), 1).tolist())
+                ground_truth.extend(gt.tolist())
+                print("Loss is :" + str(loss_val.item()))
+            accuracy = accuracy_score(ground_truth,predictions)
+            print(f'''Accuracy is {accuracy}''')
+            if accuracy > best_accuracy :
+                best_accuracy = accuracy
+                torch.save(self.bert_model.state_dict(),"joke_classification_bert")
 
     def hook_encoder_bert(self,input,output):
         return output
@@ -206,6 +260,7 @@ class RBERT(nn.Module):
                     locs = batch[2]
                     gt = batch[3]
                 loss_val = 0
+                self.bert_model.train()
                 self.linear_reg1.train()
                 self.final_linear.train()
                 # Clear gradients
@@ -316,11 +371,12 @@ if __name__ == '__main__':
     parser.add_argument("--train_file_path",type=str,default="../data/task-1/train.csv",required=False)
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
-    parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes.csv", required=False)
+    parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes1.csv", required=False)
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default='re',required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false',required=False)
+    parser.add_argument("--joke_classification_path", type=str,default='../data/task-1/joke_classification.csv', required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
     parser.add_argument("--train_scratch", type=str, default='false',required=False)
     parser.add_argument("--task", type=int, default=1, required=False)
@@ -328,7 +384,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,
-                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_file_path)
+                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_file_path, args.joke_classification_path)
 
     if args.lm_pretrain=='true':
         obj.pre_train_bert()
@@ -336,4 +392,5 @@ if __name__ == '__main__':
     if args.predict=='true':
         obj.predict(args.model_file_path)
     else:
+        obj.train_joke_classification()
         obj.train()
