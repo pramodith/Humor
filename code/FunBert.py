@@ -20,7 +20,7 @@ class RBERT(nn.Module):
 
     def __init__(self,train_file_path : str, dev_file_path : str, test_file_path : str, lm_file_path : str, train_batch_size : int,
                  test_batch_size : int,lr : float, lm_weights_file_path : str,epochs : int, lm_pretrain : str, task : int, train_scratch : str, model_path : str,
-                 joke_classification_path : str):
+                 joke_classification_path : str, add_joke_model : str):
         '''
 
         :param train_file_path: Path to the train file
@@ -46,6 +46,7 @@ class RBERT(nn.Module):
         self.joke_classification_path = joke_classification_path
         self.lr = lr
         self.task = task
+        self.add_joke_model = add_joke_model
         self.epochs = epochs
         self.linear_joke = nn.Sequential(nn.Dropout(0.3),nn.Linear(768,2))
         self.linear_reg1 = nn.Sequential(
@@ -136,7 +137,7 @@ class RBERT(nn.Module):
             print(f'''Accuracy is {accuracy}''')
             if accuracy > best_accuracy :
                 best_accuracy = accuracy
-                torch.save(self.bert_model.state_dict(),"joke_classification_bert")
+                torch.save(self.bert_model.state_dict(),"joke_classification_bert.pth")
 
     def hook_encoder_bert(self,input,output):
         return output
@@ -222,6 +223,8 @@ class RBERT(nn.Module):
         return torch.stack((final_scores))
 
     def train(self,mode=True):
+        if self.add_joke_model :
+            self.load_joke_lm_weights("joke_classification_bert.pth")
         if torch.cuda.is_available():
             self.cuda()
         #self.bert_model = self.bert_model.bert
@@ -375,6 +378,7 @@ if __name__ == '__main__':
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default='re',required=False)
+    parser.add_argument("--add_joke_train", type='str', default='true',required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false',required=False)
     parser.add_argument("--joke_classification_path", type=str,default='../data/task-1/joke_classification.csv', required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
@@ -384,7 +388,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     obj = RBERT(args.train_file_path,args.dev_file_path,args.test_file_path,args.lm_file_path,args.batch_size,64,
-                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_file_path, args.joke_classification_path)
+                args.lr,args.lm_weights_file_path,args.epochs,args.lm_pretrain,args.task,args.train_scratch,args.model_file_path,
+                args.joke_classification_path, args.add_joke_train)
 
     if args.lm_pretrain=='true':
         obj.pre_train_bert()
