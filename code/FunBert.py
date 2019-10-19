@@ -378,7 +378,7 @@ if __name__ == '__main__':
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default='re',required=False)
-    parser.add_argument("--add_joke_train", type='str', default='true',required=False)
+    parser.add_argument("--add_joke_train", type=str, default='true',required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false',required=False)
     parser.add_argument("--joke_classification_path", type=str,default='../data/task-1/joke_classification.csv', required=False)
     parser.add_argument("--lr",type=float,default=0.0001,required=False)
