@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import json
+import gensim
 from pytorch_transformers import BertTokenizer,DistilBertTokenizer
 
 def convert_task2_to_task1():
@@ -107,6 +108,10 @@ def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch
     X2 = [sent.replace(" "+replaced[i]+" "," "+edit[i]+" ") for i, sent in enumerate(X)]
     X1 = [sent.replace("<","").replace("/>", "") for i, sent in enumerate(X)]
     locs =[]
+
+
+
+
     for i in range(len(X1)):
         if replaced[i] in X[i].split(" "):
             locs.append(X1[i].split(" ").index(replaced[i]))
@@ -189,9 +194,9 @@ def tokenize_bert(X: list, org : bool):
 
     return X,entity_locs
 
-def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
-    '''
+def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=64,test_batch_size = 64):
 
+    '''
     This function creates pytorch dataloaders for fast and easy iteration over the dataset.
 
     :param file_path: Path of the file containing train/test data
@@ -207,6 +212,7 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
     X = df['original'].values
     X = [sent.replace("\"","") for sent in X]
     replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">")+1])
+    replaced_clean = [x.replace("<","").replace("/>","") for x in replaced]
     if mode=='train':
         y = df['meanGrade'].values
     edit = df['edit']
@@ -215,7 +221,9 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
-
+    word2vec_replaced = np.asarray([model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in range(len(replaced))]).reshape(-1,1)
+    word2vec_edited = np.asarray([model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1,1)
+    word2vec_indices = np.concatenate((word2vec_replaced,word2vec_edited),1)
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
                                                                                             random_state=2019,
@@ -226,6 +234,9 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
         train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
                                                                            random_state=2019, test_size=0.2)
 
+        train_word2vec_locs, validation_word2vec_locs, _, _ = train_test_split(word2vec_indices, y,
+                                                                          random_state=2019, test_size=0.2)
+
         train1_inputs = torch.tensor(train1_inputs)
         validation1_inputs = torch.tensor(validation1_inputs)
         train2_inputs = torch.tensor(train2_inputs)
@@ -234,15 +245,17 @@ def get_dataloaders_bert(file_path : str ,mode="train",train_batch_size=64,test_
         validation_labels = torch.tensor(validation_labels)
         train_entity_locs = torch.tensor(train_entity_locs)
         validation_entity_locs = torch.tensor(validation_entity_locs)
+        train_word2vec_locs = torch.tensor(train_word2vec_locs)
+        validation_word2vec_locs = torch.tensor(validation_word2vec_locs)
 
         # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
         # with an iterator the entire dataset does not need to be loaded into memory
 
-        train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_labels)
+        train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_word2vec_locs, train_labels)
         train_sampler = RandomSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
 
-        validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_labels)
+        validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
         validation_sampler = SequentialSampler(validation_data)
         validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
         return train_dataloader, validation_dataloader

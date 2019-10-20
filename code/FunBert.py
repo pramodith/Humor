@@ -8,7 +8,7 @@ from pytorch_pretrained_bert import BertAdam
 import argparse
 from data_handler import *
 import torchnlp.nn as nn_nlp
-
+import gensim
 torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -46,12 +46,13 @@ class RBERT(nn.Module):
         self.joke_classification_path = joke_classification_path
         self.lr = lr
         self.task = task
+        self.gensim_model = gensim.models.KeyedVectors.load_word2vec_format('../../../word2vec.bin.gz', binary=True)
         self.add_joke_model = add_joke_model
         self.epochs = epochs
         self.linear_joke = nn.Sequential(nn.Dropout(0.3),nn.Linear(768,2))
         self.linear_reg1 = nn.Sequential(
                   nn.Dropout(0.3),
-                  nn.Linear(768*6,100),
+                  nn.Linear(768*6+300,100),
                   )
         if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3),nn.Linear(100,1))
@@ -89,19 +90,21 @@ class RBERT(nn.Module):
         torch.save(self.bert_model.state_dict(),"lm_joke_bert.pth")
 
     def train_joke_classification(self):
-        optimizer = optim.Adam(list(self.bert_model.bert.parameters())+list(self.linear_joke.parameters()), lr=self.lr,weight_decay=0.001)
+        self.bert_model = self.bert_model.bert
+        optimizer = optim.Adam(list(self.bert_model.parameters())+list(self.linear_joke.parameters()), lr=self.lr,weight_decay=0.001)
         train_dataloader, val_dataloader = get_dataloaders_joke_classification(self.joke_classification_path)
         best_accuracy = 0
         loss = nn.CrossEntropyLoss()
-        loss_val = 0
         print("Training Joke Model")
         if torch.cuda.is_available():
             self.bert_model.cuda()
+            self.linear_joke.cuda()
         for epoch in range(self.epochs):
+            loss_val = 0
             print("Epoch : " +str(epoch))
+            self.bert_model.train()
+            self.linear_joke.train()
             for ind,batch in enumerate(train_dataloader):
-                self.bert_model.bert.train()
-                self.linear_joke.train()
                 optimizer.zero_grad()
                 if torch.cuda.is_available():
                     inp = batch[0].cuda()
@@ -109,18 +112,18 @@ class RBERT(nn.Module):
                 else:
                     inp = batch[0]
                     gt = batch[1]
-                outputs,_,_ = self.bert_model.bert(inp)
+                outputs,_,_ = self.bert_model(inp)
                 outputs = self.linear_joke(outputs[:,0,:])
                 loss_val += loss(outputs.squeeze(0), gt.long())
                 loss_val.backward()
                 print("Loss is :" + str(loss_val.item()))
                 optimizer.step()
 
+            self.bert_model.bert.eval()
+            self.linear_joke.eval()
             for ind,batch in enumerate(val_dataloader):
                 predictions = []
                 ground_truth = []
-                self.bert_model.bert.eval()
-                self.linear_joke.eval()
                 optimizer.zero_grad()
                 if torch.cuda.is_available():
                     inp = batch[0].cuda()
@@ -174,7 +177,16 @@ class RBERT(nn.Module):
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768*2,-1).t()*imp_seq,0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
-                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2),0)))
+                if input[3][i,0] == -1:
+                    word2vec_entity1 = torch.zeros(300)
+                else:
+                    word2vec_entity1 = torch.tensor(self.gensim_model.vectors[input[3][i, 0]])
+                if input[3][i,1] == -1:
+                    word2vec_entity2 = torch.zeros(300)
+                else:
+                    word2vec_entity2 = torch.tensor(self.gensim_model.vectors[input[3][i, 1]])
+                word2vec_diff = word2vec_entity1-word2vec_entity2
+                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2,word2vec_diff),0)))
                 #sent_out = torch.tanh(self.linear_reg1(sent_attn))
                 #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
                 final_out = self.final_linear(sent_out)
@@ -199,12 +211,12 @@ class RBERT(nn.Module):
                 entity2 = torch.mean(output_per_seq2[i, loc[ent_ind] + 1:loc[ent_ind+1]], 0)
                 entity2_max = torch.max(output_per_seq2[i, loc[ent_ind] + 1:loc[ent_ind+1]], 0)
                 imp_seq = torch.cat((output_per_seq2[i,0:loc[ent_ind]+1],output_per_seq2[i,loc[ent_ind+1]:]),0)
-
                 _,attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0),imp_seq.unsqueeze(0))
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768*2,-1).t()*imp_seq,0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
-                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2),0)))
+
+                sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2,word2vec_diff),0)))
                 #sent_out = torch.tanh(self.linear_reg1(sent_attn))
                 #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
                 final_out = self.final_linear(sent_out)
@@ -223,8 +235,8 @@ class RBERT(nn.Module):
         return torch.stack((final_scores))
 
     def train(self,mode=True):
-        if self.add_joke_model :
-            self.load_joke_lm_weights("joke_classification_bert.pth")
+        #if self.add_joke_model :
+        #    self.load_joke_lm_weights("joke_classification_bert.pth")
         if torch.cuda.is_available():
             self.cuda()
         #self.bert_model = self.bert_model.bert
@@ -237,7 +249,7 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             loss = nn.MSELoss()
-            train_dataloader, val_dataloader = get_dataloaders_bert(self.train_file_path, "train",
+            train_dataloader, val_dataloader = get_dataloaders_bert(self.train_file_path, self.gensim_model, "train",
                                                                     self.train_batch_size)
 
         else :
@@ -256,19 +268,21 @@ class RBERT(nn.Module):
                     input1 = batch[0].cuda()
                     input2 = batch[1].cuda()
                     locs = batch[2].cuda()
-                    gt = batch[3].cuda()
+                    word2vec_locs = batch[3].cuda()
+                    gt = batch[4].cuda()
                 else:
                     input1 = batch[0]
                     input2 = batch[1]
                     locs = batch[2]
-                    gt = batch[3]
+                    word2vec_locs = batch[3]
+                    gt = batch[4]
                 loss_val = 0
                 self.bert_model.train()
                 self.linear_reg1.train()
                 self.final_linear.train()
                 # Clear gradients
                 optimizer.zero_grad()
-                final_scores = self.forward((input1,input2,locs))
+                final_scores = self.forward((input1,input2,locs,word2vec_locs))
                 if self.task==1:
                     loss_val += loss(final_scores.squeeze(1), gt.float())
                 else :
@@ -397,5 +411,5 @@ if __name__ == '__main__':
     if args.predict=='true':
         obj.predict(args.model_file_path)
     else:
-        obj.train_joke_classification()
+        #obj.train_joke_classification()
         obj.train()
