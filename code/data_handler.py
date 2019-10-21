@@ -258,7 +258,7 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
         validation_sampler = SequentialSampler(validation_data)
         validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
-        return train_dataloader, validation_dataloader
+        return train_dataloader, validation_dataloader, word2vec_indices
 
     if mode == "test":
         test1_input = torch.tensor(X1)

@@ -9,11 +9,10 @@ import argparse
 from data_handler import *
 import torchnlp.nn as nn_nlp
 import gensim
+import numpy as np
 torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-
-
 
 
 class RBERT(nn.Module):
@@ -61,6 +60,14 @@ class RBERT(nn.Module):
 
         if train_scratch == 'true':
             self.load_state_dict(torch.load(model_path))
+
+    def init_embeddings(self, ind: np.ndarray):
+        ind = np.unique(ind.reshape(-1))
+        self.nn_embeddings = torch.nn.Embedding(len(ind),300)
+        self.emb_key = {ind[i]:i for i in range(len(ind))}
+        emb_values = np.take(self.gensim_model.vectors,ind,0)
+        self.nn_embeddings.load_state_dict({'weight':torch.tensor(emb_values)})
+        del self.gensim_model
 
     def load_joke_lm_weights(self,lm_path : str):
         self.bert_model.load_state_dict(torch.load(lm_path))
@@ -177,6 +184,8 @@ class RBERT(nn.Module):
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768*2,-1).t()*imp_seq,0)
                 #diff = torch.sub(entity1,entity2)
                 #prod = entity1*entity2
+
+                '''
                 if input[3][i,0] == -1:
                     word2vec_entity1 = torch.zeros(300)
                 else:
@@ -185,7 +194,8 @@ class RBERT(nn.Module):
                     word2vec_entity2 = torch.zeros(300)
                 else:
                     word2vec_entity2 = torch.tensor(self.gensim_model.vectors[input[3][i, 1]])
-                word2vec_diff = word2vec_entity1-word2vec_entity2
+                '''
+                word2vec_diff = self.nn_embeddings(torch.tensor(self.emb_key[input[3][i,0].item()]))-self.nn_embeddings(torch.tensor(self.emb_key[input[3][i,1].item()]))
                 sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn,output_per_seq2[i,0],entity2,word2vec_diff),0)))
                 #sent_out = torch.tanh(self.linear_reg1(sent_attn))
                 #sent_out = torch.tanh(self.linear_reg1(torch.cat((sent_attn, diff, prod), 0)))
@@ -249,7 +259,7 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             loss = nn.MSELoss()
-            train_dataloader, val_dataloader = get_dataloaders_bert(self.train_file_path, self.gensim_model, "train",
+            train_dataloader, val_dataloader, word2vec_ind = get_dataloaders_bert(self.train_file_path, self.gensim_model, "train",
                                                                     self.train_batch_size)
 
         else :
@@ -257,6 +267,7 @@ class RBERT(nn.Module):
             train_dataloader, val_dataloader = get_dataloaders_bert_task2(self.train_file_path, "train",
                                                                     self.train_batch_size)
 
+        self.init_embeddings(word2vec_ind)
         best_loss  = sys.maxsize
         best_accuracy = -sys.maxsize
 
@@ -276,10 +287,12 @@ class RBERT(nn.Module):
                     locs = batch[2]
                     word2vec_locs = batch[3]
                     gt = batch[4]
+
                 loss_val = 0
                 self.bert_model.train()
                 self.linear_reg1.train()
                 self.final_linear.train()
+
                 # Clear gradients
                 optimizer.zero_grad()
                 final_scores = self.forward((input1,input2,locs,word2vec_locs))
@@ -287,6 +300,7 @@ class RBERT(nn.Module):
                     loss_val += loss(final_scores.squeeze(1), gt.float())
                 else :
                     loss_val += loss(final_scores.squeeze(0), gt.long())
+
                 # Compute gradients
                 loss_val.backward()
                 total_prev_loss += loss_val.item()
@@ -300,7 +314,6 @@ class RBERT(nn.Module):
                 predictions = []
                 ground_truth = []
                 self.bert_model.eval()
-                accuracy = 0
                 self.linear_reg1.eval()
                 self.final_linear.eval()
                 mse_loss = 0
@@ -309,13 +322,15 @@ class RBERT(nn.Module):
                         input1 = val_batch[0].cuda()
                         input2 = val_batch[1].cuda()
                         locs = val_batch[2].cuda()
-                        gt = val_batch[3].cuda()
+                        word2vec_locs = val_batch[3].cuda()
+                        gt = val_batch[4].cuda()
                     else:
                         input1 = val_batch[0]
                         input2 = val_batch[1]
                         locs = val_batch[2]
-                        gt = val_batch[3]
-                    final_scores = self.forward((input1,input2,locs))
+                        word2vec_locs = val_batch[3]
+                        gt = val_batch[4]
+                    final_scores = self.forward((input1,input2,locs,word2vec_locs))
                     if self.task == 1:
                         mse_loss += mean_squared_error(final_scores.cpu().detach().squeeze(1),gt.cpu().detach())
 
