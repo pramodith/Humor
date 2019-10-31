@@ -194,6 +194,7 @@ def tokenize_bert(X: list, org : bool):
 
     return X,entity_locs
 
+
 def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=64,test_batch_size = 64):
 
     '''
@@ -221,9 +222,10 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
-    word2vec_replaced = np.asarray([model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in range(len(replaced))]).reshape(-1,1)
-    word2vec_edited = np.asarray([model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1,1)
-    word2vec_indices = np.concatenate((word2vec_replaced,word2vec_edited),1)
+    if model:
+        word2vec_replaced = np.asarray([model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in range(len(replaced))]).reshape(-1,1)
+        word2vec_edited = np.asarray([model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1,1)
+        word2vec_indices = np.concatenate((word2vec_replaced,word2vec_edited),1)
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
                                                                                             random_state=2019,
@@ -234,7 +236,8 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
                                                                            random_state=2019, test_size=0.2)
 
-        train_word2vec_locs, validation_word2vec_locs, _, _ = train_test_split(word2vec_indices, y,
+        if model:
+            train_word2vec_locs, validation_word2vec_locs, _, _ = train_test_split(word2vec_indices, y,
                                                                           random_state=2019, test_size=0.2)
 
         train1_inputs = torch.tensor(train1_inputs)
@@ -245,31 +248,39 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         validation_labels = torch.tensor(validation_labels)
         train_entity_locs = torch.tensor(train_entity_locs)
         validation_entity_locs = torch.tensor(validation_entity_locs)
-        train_word2vec_locs = torch.tensor(train_word2vec_locs)
-        validation_word2vec_locs = torch.tensor(validation_word2vec_locs)
+        if model:
+            train_word2vec_locs = torch.tensor(train_word2vec_locs)
+            validation_word2vec_locs = torch.tensor(validation_word2vec_locs)
 
         # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
         # with an iterator the entire dataset does not need to be loaded into memory
 
-        train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_word2vec_locs, train_labels)
+        #train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_word2vec_locs, train_labels)
+        train_data = TensorDataset(train1_inputs, train2_inputs, train_entity_locs, train_labels)
         train_sampler = RandomSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
 
-        validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
+        #validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
+        validation_data = TensorDataset(validation1_inputs, validation2_inputs, validation_entity_locs,validation_labels)
         validation_sampler = SequentialSampler(validation_data)
         validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
-        return train_dataloader, validation_dataloader, word2vec_indices
+        if model:
+            return train_dataloader, validation_dataloader, word2vec_indices
+        else:
+            return  train_dataloader, validation_dataloader
 
     if mode == "test":
         test1_input = torch.tensor(X1)
         test2_input = torch.tensor(X2)
+
         train_entity_locs = torch.tensor(replacement_locs)
+        word2vec_locs = torch.tensor(word2vec_indices)
         id = torch.tensor(id)
-        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,id)
+        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,word2vec_locs,id)
         test_sampler = SequentialSampler(test_data)
         test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
 
-        return test_data_loader
+        return test_data_loader, word2vec_indices
 
 def get_dataloaders_bert_task2(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
     '''
