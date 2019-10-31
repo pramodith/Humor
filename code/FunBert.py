@@ -185,8 +185,8 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             input = input[0]
-            # output_per_seq1,attention_layer_inps = self.bert_model(input[0].long())
-            # output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[3], attention_layer_inps[5]), 2)
+            output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long())
+            output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[8]), 2)
             # output_per_seq1 = output_per_seq1.transpose(0, 1)
             # output_per_seq1, _ = self.lstm(output_per_seq1)
             # output_per_seq1 = output_per_seq1.transpose(0, 1)
@@ -200,10 +200,12 @@ class RBERT(nn.Module):
             '''
             for (i, loc) in enumerate(input[2]):
                 # +1 is to ensure that the symbol token is not considered
-                # entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
+                entity1 = torch.mean(output_per_seq1[i, loc[0] + 1:loc[1]], 0)
                 entity2 = torch.mean(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-                entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
-                imp_seq = torch.cat((output_per_seq2[i, 0:loc[2] + 1], output_per_seq2[i, loc[3]:]), 0)
+                #entity2_max = torch.max(output_per_seq2[i, loc[2] + 1:loc[3]], 0)
+                imp_seq1 = torch.cat((output_per_seq1[i, 0:loc[0] + 1], output_per_seq2[i, loc[1]:]), 0)
+                imp_seq2 = torch.cat((output_per_seq2[i, 0:loc[2] + 1], output_per_seq2[i, loc[3]:]), 0)
+                imp_seq = torch.cat((imp_seq1,imp_seq2),0)
                 _, attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0), imp_seq.unsqueeze(0))
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq, 0)
                 # diff = torch.sub(entity1,entity2)
@@ -341,7 +343,11 @@ class RBERT(nn.Module):
                 self.final_linear.eval()
                 self.linear_joke.eval()
                 mse_loss = 0
-                for val_batch_num, val_batch_reg,val_batch_cl in enumerate(val_dataloader_reg,val_dataloader_cl):
+                for val_batch_num, val_batch in enumerate(zip(val_dataloader_reg,val_dataloader_cl)):
+
+                    val_batch_reg = val_batch[0]
+                    val_batch_cl = val_batch[1]
+
                     if torch.cuda.is_available():
                         input1 = val_batch_reg[0].cuda()
                         input2 = val_batch_reg[1].cuda()
@@ -372,7 +378,7 @@ class RBERT(nn.Module):
                     predictions.extend(torch.argmax(outputs.squeeze(0), 1).tolist())
                     ground_truth.extend(gt.tolist())
 
-                print("Loss is :" + str(mse_loss))
+                print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
                 accuracy = accuracy_score(ground_truth, predictions)
                 print(f'''Accuracy is {accuracy}''')
             torch.save(self.state_dict(), "model_" + str(self.task) + str(epoch) + ".pth")
@@ -388,7 +394,7 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             loss = nn.MSELoss()
-            train_dataloader, val_dataloader, word2vec_ind = get_dataloaders_bert(self.train_file_path,
+            train_dataloader, val_dataloader = get_dataloaders_bert(self.train_file_path,
                                                                                   self.gensim_model, "train",
                                                                                   self.train_batch_size)
 
@@ -431,7 +437,7 @@ class RBERT(nn.Module):
 
                 # Clear gradients
                 optimizer.zero_grad()
-                if self.word2vec:
+                if self.word2vec=='true':
                     final_scores = self.forward((input1, input2, locs, word2vec_locs))
                 else:
                     final_scores = self.forward((input1, input2, locs))
@@ -580,5 +586,5 @@ if __name__ == '__main__':
         obj.predict(args.model_file_path)
     else:
         # obj.train_joke_classification()
-        #obj.train()
-        obj.multitask_train()
+        obj.train()
+        #obj.multitask_train()
