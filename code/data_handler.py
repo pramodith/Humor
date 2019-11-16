@@ -7,6 +7,7 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 import json
 import gensim
 from pytorch_transformers import BertTokenizer,DistilBertTokenizer
+from utils import pos_tag
 
 def convert_task2_to_task1():
     df2 = pd.read_csv("../data/task-2/train.csv")
@@ -217,8 +218,14 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
     if mode=='train':
         y = df['meanGrade'].values
     edit = df['edit']
-    X2 = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
-    X1 = [sent.replace("<","< ").replace("/>"," <") for i,sent in enumerate(X)]
+
+    org_tag = pos_tag(X, replaced)
+    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + org_tag[i] + " <") for i, sent in enumerate(X)]
+    X2 = [sent.replace(replaced[i], "<"+edit[i]+"/>") for i, sent in enumerate(X)]
+    edited_tag = pos_tag(X2,edit)
+    X2 = [sent.replace("<"+edit[i]+"/>", "^ " + edit[i] + " " + edited_tag[i] + " ^") for i, sent in enumerate(X2)]
+
+
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
@@ -226,6 +233,7 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         word2vec_replaced = np.asarray([model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in range(len(replaced))]).reshape(-1,1)
         word2vec_edited = np.asarray([model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1,1)
         word2vec_indices = np.concatenate((word2vec_replaced,word2vec_edited),1)
+
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
                                                                                             random_state=2019,

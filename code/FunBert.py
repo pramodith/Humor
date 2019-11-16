@@ -34,7 +34,7 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased', output_hidden_states=True)
+        self.bert_model = BertForMaskedLM.from_pretrained('bert-base-uncased', output_hidden_states=True,attention_probs_dropout_prob=0.1)
         if lm_pretrain != 'true':
             pass
             # self.load_joke_lm_weights(lm_weights_file_path)
@@ -70,6 +70,7 @@ class RBERT(nn.Module):
             self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(100, 2))
 
         if train_scratch == 'true':
+            print("loaded the model")
             self.load_state_dict(torch.load(model_path))
 
     def init_embeddings(self, ind: np.ndarray):
@@ -88,6 +89,7 @@ class RBERT(nn.Module):
     def freeze(self, epoch):
         num_params = 190
         for ind, param in enumerate(self.parameters()):
+            print(param.requires_grad,param.shape)
             if num_params - ind <= 10 * (epoch + 1):
 
                 param.requires_grad = True
@@ -186,11 +188,13 @@ class RBERT(nn.Module):
         if self.task == 1:
             input = input[0]
             output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long())
+            #attention_layer_inps = torch.mean(attention_layer_inps,0)
             output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[11]), 2)
             # output_per_seq1 = output_per_seq1.transpose(0, 1)
             # output_per_seq1, _ = self.lstm(output_per_seq1)
             # output_per_seq1 = output_per_seq1.transpose(0, 1)
             output_per_seq2, _, attention_layer_inps = self.bert_model(input[1].long())
+            #attention_layer_inps = torch.mean(attention_layer_inps, 0)
             output_per_seq2 = torch.cat((output_per_seq2, attention_layer_inps[11]), 2)
             # output_per_seq2 = output_per_seq2.transpose(0,1)
             # output_per_seq2,_ = self.lstm(output_per_seq2)
@@ -229,8 +233,8 @@ class RBERT(nn.Module):
                     self.linear_reg1(torch.cat((sent_attn, output_per_seq2[i, 0], entity2, word2vec_diff), 0)))
                 else:
                     sent_out = torch.tanh(
-                        self.linear_reg1(torch.cat((sent_attn,sent_attn1,output_per_seq2[i, 0], entity2), 0)))
-                final_out = self.final_linear(sent_out)
+                        self.linear_reg1(torch.cat((sent_attn,sent_attn1,torch.abs(output_per_seq1[i,0]-output_per_seq2[i, 0]), entity2), 0)))
+                    final_out = self.final_linear(sent_out)
                 final_scores.append(final_out)
 
         if self.task == 2:
@@ -410,6 +414,10 @@ class RBERT(nn.Module):
         best_accuracy = -sys.maxsize
 
         for epoch in range(self.epochs):
+            self.bert_model.train()
+            self.attention.train()
+            self.linear_reg1.train()
+            self.final_linear.train()
             #self.freeze(epoch)
             #optimizer = optim.Adam(filter(lambda x: x.requires_grad, self.parameters()), lr=self.lr, weight_decay=0.001)
             if epoch == 0:
@@ -431,10 +439,6 @@ class RBERT(nn.Module):
                     gt = batch[3]
 
                 loss_val = 0
-                self.bert_model.train()
-                self.attention.train()
-                self.linear_reg1.train()
-                self.final_linear.train()
 
                 # Clear gradients
                 optimizer.zero_grad()
@@ -517,8 +521,8 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
-            pass
-            #self.load_state_dict(torch.load(model_path))
+            #pass
+            self.load_state_dict(torch.load(model_path))
         if self.task == 1:
             test_dataloader = get_dataloaders_bert(self.test_file_path, self.gensim_model,"test")
         else:
@@ -564,7 +568,7 @@ if __name__ == '__main__':
     parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes1.csv", required=False)
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
-    parser.add_argument("--predict", type=str, default='true', required=False)
+    parser.add_argument("--predict", type=str, default='false', required=False)
     parser.add_argument("--add_joke_train", type=str, default='true', required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false', required=False)
     parser.add_argument("--word2vec", type=str, default='false', required=False)
