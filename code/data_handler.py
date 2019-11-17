@@ -220,10 +220,10 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
     edit = df['edit']
 
     org_tag = pos_tag(X, replaced)
-    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < " + org_tag[i]) for i, sent in enumerate(X)]
+    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
     X2 = [sent.replace(replaced[i], "<"+edit[i]+"/>") for i, sent in enumerate(X)]
     edited_tag = pos_tag(X2,edit)
-    X2 = [sent.replace("<"+edit[i]+"/>", "^ " + edit[i] + " ^" + " " + edited_tag[i]) for i, sent in enumerate(X2)]
+    X2 = [sent.replace("<"+edit[i]+"/>", "^ " + edit[i] + " ^" ) for i, sent in enumerate(X2)]
 
     unique_tags = set(org_tag).union(set(edited_tag))
     tag2ind = {tag : i for i,tag in enumerate(unique_tags)}
