@@ -220,15 +220,22 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
     edit = df['edit']
 
     org_tag = pos_tag(X, replaced)
-    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + org_tag[i] + " <") for i, sent in enumerate(X)]
+    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < " + org_tag[i]) for i, sent in enumerate(X)]
     X2 = [sent.replace(replaced[i], "<"+edit[i]+"/>") for i, sent in enumerate(X)]
     edited_tag = pos_tag(X2,edit)
-    X2 = [sent.replace("<"+edit[i]+"/>", "^ " + edit[i] + " " + edited_tag[i] + " ^") for i, sent in enumerate(X2)]
+    X2 = [sent.replace("<"+edit[i]+"/>", "^ " + edit[i] + " ^" + " " + edited_tag[i]) for i, sent in enumerate(X2)]
 
+    unique_tags = set(org_tag).union(set(edited_tag))
+    tag2ind = {tag : i for i,tag in enumerate(unique_tags)}
+    org_tag = [tag2ind[tag] for tag in org_tag]
+    edited_tag = [tag2ind[tag] for tag in edited_tag]
 
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
+
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
+    tag2vec_indices = np.concatenate((np.asarray(org_tag).reshape(-1,1),np.asarray(edited_tag).reshape(-1,1)),1)
+    replacement_locs = np.concatenate((replacement_locs,tag2vec_indices),1)
     if model:
         word2vec_replaced = np.asarray([model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in range(len(replaced))]).reshape(-1,1)
         word2vec_edited = np.asarray([model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1,1)

@@ -42,6 +42,7 @@ class RBERT(nn.Module):
         self.test_batch_size = test_batch_size
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
+        self.nn_embeddings = torch.nn.Embedding(12, 300)
         # self.lstm = nn.LSTM(768*2,768*2,bidirectional=False)
         self.attention = nn_nlp.Attention(768 * 2)
         self.word2vec = word2vec
@@ -62,7 +63,7 @@ class RBERT(nn.Module):
         self.linear_joke = nn.Sequential(nn.Dropout(0.3), nn.Linear(768, 2))
         self.linear_reg1 = nn.Sequential(
             nn.Dropout(0.3),
-            nn.Linear(768 * 8, 100))
+            nn.Linear(768 * 8 +600, 100))
 
         if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(100, 1))
@@ -213,6 +214,8 @@ class RBERT(nn.Module):
                 sent_attn = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq2, 0)
                 _, attention_score1 = self.attention(entity1.unsqueeze(0).unsqueeze(0), imp_seq1.unsqueeze(0))
                 sent_attn1 = torch.sum(attention_score1.squeeze(0).expand(768 * 2, -1).t() * imp_seq1, 0)
+                tag2vec_entity1 = self.nn_embeddings(loc[4])
+                tag2vec_entity2 = self.nn_embeddings(loc[5])
                 # diff = torch.sub(entity1,entity2)
                 # prod = entity1*entity2
                 if self.word2vec=='true':
@@ -233,7 +236,7 @@ class RBERT(nn.Module):
                     self.linear_reg1(torch.cat((sent_attn, output_per_seq2[i, 0], entity2, word2vec_diff), 0)))
                 else:
                     sent_out = torch.tanh(
-                        self.linear_reg1(torch.cat((sent_attn,sent_attn1,torch.abs(output_per_seq1[i,0]-output_per_seq2[i, 0]), entity2), 0)))
+                        self.linear_reg1(torch.cat((sent_attn,sent_attn1,torch.abs(output_per_seq1[i,0]-output_per_seq2[i, 0]),tag2vec_entity1,tag2vec_entity2,entity2), 0)))
                     final_out = self.final_linear(sent_out)
                 final_scores.append(final_out)
 
