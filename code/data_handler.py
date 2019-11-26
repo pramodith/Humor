@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import json
 import gensim
-from pytorch_transformers import BertTokenizer,DistilBertTokenizer
+from pytorch_transformers import BertTokenizer,DistilBertTokenizer, RobertaTokenizer
 from utils import pos_tag
 
 def convert_task2_to_task1():
@@ -111,8 +111,6 @@ def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch
     locs =[]
 
 
-
-
     for i in range(len(X1)):
         if replaced[i] in X[i].split(" "):
             locs.append(X1[i].split(" ").index(replaced[i]))
@@ -175,8 +173,8 @@ def tokenize_bert(X: list, org : bool):
     sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
 
     # Load the tokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', add_special_tokens=True)
+    #tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
     # Tokenize and vectorize
     tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
     X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
@@ -189,9 +187,9 @@ def tokenize_bert(X: list, org : bool):
 
     # Find the locations of each entity and store them
     if org:
-        entity_locs = np.asarray([[i for i, s in enumerate(sent) if s == '<'] for sent in tokenized_text])
+        entity_locs = np.asarray([[i for i, s in enumerate(sent) if '<' in s and len(s)==1] for sent in tokenized_text])
     else:
-        entity_locs = np.asarray([[i for i, s in enumerate(sent) if s == '^'] for sent in tokenized_text])
+        entity_locs = np.asarray([[i for i, s in enumerate(sent) if '^' in s] for sent in tokenized_text])
 
     return X,entity_locs
 
@@ -219,11 +217,12 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         y = df['meanGrade'].values
     edit = df['edit']
 
-    org_tag = pos_tag(X, replaced)
+    org_tag, org_vectors = pos_tag(X, replaced)
     X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
     X2 = [sent.replace(replaced[i], "<"+edit[i]+"/>") for i, sent in enumerate(X)]
-    edited_tag = pos_tag(X2,edit)
+    edited_tag, edited_vectors = pos_tag(X2,edit)
     X2 = [sent.replace("<"+edit[i]+"/>", "^ " + edit[i] + " ^" ) for i, sent in enumerate(X2)]
+    org_vectors.update(edited_vectors)
 
     unique_tags = set(org_tag).union(set(edited_tag))
     tag2ind = {tag : i for i,tag in enumerate(unique_tags)}
@@ -233,9 +232,16 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
     X1,e1_locs = tokenize_bert(X1,True)
     X2,e2_locs = tokenize_bert(X2,False)
 
+    word2ind = {word.lower() : i for i,word in enumerate(sorted(org_vectors.keys()))}
+    vectors = np.asarray([org_vectors[key] for key in sorted(org_vectors.keys())])
+    glove_replaced = np.asarray([word2ind[replaced_clean[i]] if replaced_clean[i] in word2ind else word2ind['<other>'] for i in range(len(replaced_clean))]).reshape(-1, 1)
+    glove_edited = np.asarray([word2ind[edit[i]] if edit[i] in word2ind else word2ind['<other>'] for i in range(len(edit))]).reshape(-1, 1)
     replacement_locs = np.concatenate((e1_locs, e2_locs), 1)
     tag2vec_indices = np.concatenate((np.asarray(org_tag).reshape(-1,1),np.asarray(edited_tag).reshape(-1,1)),1)
-    replacement_locs = np.concatenate((replacement_locs,tag2vec_indices),1)
+    glove_indices = np.concatenate((glove_replaced,glove_edited),1)
+    replacement_locs = np.concatenate((replacement_locs,tag2vec_indices,glove_indices),1)
+
+
     if model:
         word2vec_replaced = np.asarray([model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in range(len(replaced))]).reshape(-1,1)
         word2vec_edited = np.asarray([model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1,1)
@@ -263,6 +269,7 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         validation_labels = torch.tensor(validation_labels)
         train_entity_locs = torch.tensor(train_entity_locs)
         validation_entity_locs = torch.tensor(validation_entity_locs)
+        vectors = torch.tensor(vectors)
         if model:
             train_word2vec_locs = torch.tensor(train_word2vec_locs)
             validation_word2vec_locs = torch.tensor(validation_word2vec_locs)
@@ -282,7 +289,7 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         if model:
             return train_dataloader, validation_dataloader, word2vec_indices
         else:
-            return  train_dataloader, validation_dataloader
+            return  train_dataloader, validation_dataloader, vectors
 
     if mode == "test":
         test1_input = torch.tensor(X1)

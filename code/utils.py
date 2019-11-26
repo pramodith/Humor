@@ -25,16 +25,22 @@ def joke_file_prcessing():
 
 
 def pos_tag(sentences, word):
-   nlp = spacy.load("en_core_web_sm")
+   nlp = spacy.load("en_core_web_lg", disable=['parser','ner'])
    pos = []
+   vectors = {}
    sentences = [sent.replace("<","").replace("/>","") for sent in sentences]
 
    for ind,sentence in enumerate(sentences):
       doc =  nlp(sentence)
       for token in doc:
-         if token.text==word[ind].strip("<|/>"):
+         word_cl = word[ind].strip("<|/>")
+         if token.text==word_cl:
             pos.append(token.pos_)
             break
+         if word_cl not in vectors:
+             vectors[word_cl] = token.vector
+
       if len(pos)!=ind+1:
-         pos.append("NOUN")
-   return pos
+        pos.append("NOUN")
+   vectors['<other>'] = np.random.uniform(0,1,300)
+   return pos, vectors
