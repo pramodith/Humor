@@ -259,8 +259,8 @@ def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size
         return  train_dataloader, validation_dataloader
 
     if mode == "test":
-        test1_input = torch.tensor(X1)
-        test2_input = torch.tensor(X2)
+        test1_input = torch.tensor(X)
+        test2_input = torch.tensor(sent_emb)
 
         train_entity_locs = torch.tensor(entity_locs)
         #word2vec_locs = torch.tensor(word2vec_indices)
