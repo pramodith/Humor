@@ -55,7 +55,7 @@ def get_bert_lm_dataloader(file_path : str,batch_size = 16):
     X = [tokenizer.encode(sent) for sent in jokes]
     MAX_LEN = max([len(sent) for sent in jokes])
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
-    X = torch.tensor(X)[:,:150]
+    X = torch.tensor(X)[:,:50]
     dataset = TensorDataset(torch.tensor(X))
     sampler = RandomSampler(dataset)
     data_loader = DataLoader(dataset, sampler=sampler, batch_size=batch_size, pin_memory=True)
@@ -158,6 +158,23 @@ def get_dataloaders(file_path : str ,mode="train",train_batch_size=64,test_batch
 
         return test_data_loader
 
+def tokenize_bert_sent(X1: list, X2 : list ):
+    sentences = ["[CLS] " + X1[i] + " [SEP] " + X2[i] + " [SEP]" for i in range(len(X1))]
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
+    X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
+    sent_emb = [[0 if i<sentence.index(102) else 1 for i  in range(len(sentence)) ] for sentence in X]
+    MAX_LEN = max([len(x) for x in sent_emb])+1
+    # Pad sequences to make them all eqally long
+    X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post',0)
+    sent_emb = pad_sequences(sent_emb,MAX_LEN,'long','post','post',1)
+    # Find the locations of each entity and store them
+    entity_locs1 = np.asarray(
+            [[i for i, s in enumerate(sent) if '<' in s and len(s) == 1] for sent in tokenized_text])
+    entity_locs2 = np.asarray([[i for i, s in enumerate(sent) if '^' in s] for sent in tokenized_text])
+
+    return X, sent_emb,np.concatenate((entity_locs1, entity_locs2), 1)
+
 def tokenize_bert(X: list, org : bool):
     '''
     This function tokenizes the input sentences and returns a vectorized representation of them and the location
@@ -180,7 +197,6 @@ def tokenize_bert(X: list, org : bool):
     X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
 
     # MAX_SEQ_LEN
-    #MAX_LEN = max([len(x) for x in X])+1
     MAX_LEN = 50
     #Pad sequences to make them all eqally long
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post')
@@ -193,6 +209,67 @@ def tokenize_bert(X: list, org : bool):
 
     return X,entity_locs
 
+def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size=64,test_batch_size = 64):
+    df = pd.read_csv(file_path, sep=",")
+    id = df['id']
+    X = df['original'].values
+    X = [sent.replace("\"", "") for sent in X]
+    replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">") + 1])
+    if mode == 'train':
+        y = df['meanGrade'].values
+    edit = df['edit']
+
+    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
+    X2 = [sent.replace(replaced[i], "<" + edit[i] + "/>") for i, sent in enumerate(X)]
+    X2 = [sent.replace("<" + edit[i] + "/>", "^ " + edit[i] + " ^") for i, sent in enumerate(X2)]
+    X, sent_emb, entity_locs = tokenize_bert_sent(X1,X2)
+
+    if mode == "train":
+        train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X, y,
+                                                                                            random_state=2019,
+                                                                                            test_size=0.2)
+        train_entity_locs, validation_entity_locs, _, _ = train_test_split(entity_locs, y,
+                                                                           random_state=2019, test_size=0.2)
+
+        train_sent_emb, validation_sent_emb, _, _ = train_test_split(sent_emb, y,
+                                                                          random_state=2019, test_size=0.2)
+
+        train1_inputs = torch.tensor(train1_inputs)
+        validation1_inputs = torch.tensor(validation1_inputs)
+        train_labels = torch.tensor(train_labels)
+        validation_labels = torch.tensor(validation_labels)
+        train_entity_locs = torch.tensor(train_entity_locs)
+        validation_entity_locs = torch.tensor(validation_entity_locs)
+        train_sent_emb = torch.tensor(train_sent_emb)
+        validation_sent_emb = torch.tensor(validation_sent_emb)
+
+
+        # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
+        # with an iterator the entire dataset does not need to be loaded into memory
+
+        #train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_word2vec_locs, train_labels)
+        train_data = TensorDataset(train1_inputs, train_sent_emb, train_entity_locs, train_labels)
+        train_sampler = RandomSampler(train_data)
+        train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
+
+        #validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
+        validation_data = TensorDataset(validation1_inputs, validation_sent_emb, validation_entity_locs,validation_labels)
+        validation_sampler = SequentialSampler(validation_data)
+        validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
+        return  train_dataloader, validation_dataloader
+
+    if mode == "test":
+        test1_input = torch.tensor(X1)
+        test2_input = torch.tensor(X2)
+
+        train_entity_locs = torch.tensor(entity_locs)
+        #word2vec_locs = torch.tensor(word2vec_indices)
+        id = torch.tensor(id)
+        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,id)
+        test_sampler = SequentialSampler(test_data)
+        test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
+
+        return test_data_loader
 
 def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=64,test_batch_size = 64):
 
