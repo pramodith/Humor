@@ -105,14 +105,14 @@ class RBERT(nn.Module):
                 param.requires_grad = False
 
     def pre_train_bert(self):
-        var1 = [{'params': self.bert_model.bert.encoder.layer[i].parameters(), 'lr': 2e-5 * (0.95 ** ((12 - i))),
-                 'weight_decay': 0.001} for i in range(12)]
+        #var1 = [{'params': self.bert_model.bert.encoder.layer[i].parameters(), 'lr': 2e-5 * (0.95 ** ((12 - i))),
+        #         'weight_decay': 0.001} for i in range(12)]
         #var2 = [{'params': x for x in list(set(self.bert_model.bert.parameters()).difference(self.bert_model.bert.encoder.parameters()))}]
-        optimizer = optim.Adam(var1, lr=5e-5, weight_decay=1e-3)
+        optimizer = optim.Adam(self.bert_model.parameters(), lr=2e-5, weight_decay=1e-3)
         #scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=5e-4, total_steps=2000, epochs=1,
         #                                          steps_per_epoch=400, anneal_strategy='linear')
 
-        train_dataloader = get_bert_lm_dataloader(self.lm_file_path,64)
+        train_dataloader = get_bert_lm_dataloader(self.lm_file_path,32)
         print("Training LM")
         if torch.cuda.is_available():
             self.bert_model.cuda()
@@ -124,8 +124,8 @@ class RBERT(nn.Module):
                     inp = batch[0].cuda()
                 else:
                     inp = batch[0]
-                pos = torch.randint(high=inp.shape[1],size=(int(inp.shape[1]*0.8),))
-                inp[:,pos] = -1
+                #pos = torch.randint(high=inp.shape[1],size=(int(inp.shape[1]*0.8),))
+                #inp[:,pos] = -1
                 outputs = self.bert_model(inp, masked_lm_labels=inp.long())
                 loss, prediction_scores = outputs[:2]
                 loss.backward()
@@ -204,8 +204,8 @@ class RBERT(nn.Module):
         pos = input[0].clone().detach().cpu()
         for (i, loc) in enumerate(input[2]):
             # +1 is to ensure that the symbol token is not considered
-            entity1 = torch.mean(out_per_seq[i,loc[0]+1:loc[1]],0)
-            entity2 = torch.mean(out_per_seq[i, loc[2] + 1:loc[3]], 0)
+            entity1 = torch.mean(out_per_seq[i,loc[0]:loc[1]+1],0)
+            entity2 = torch.mean(out_per_seq[i, loc[2]:loc[3]+1], 0)
             entity_diff = torch.abs(entity2-entity1)
             imp_seq1 = torch.cat((out_per_seq[i, 0:loc[0] + 1], out_per_seq[i, loc[1]:]), 0)
             imp_seq2 = torch.cat((out_per_seq[i, np.where(pos[i].numpy()==102)[0][0]:loc[2] + 1], out_per_seq[i, loc[3]:]), 0)
