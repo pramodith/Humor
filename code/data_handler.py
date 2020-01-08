@@ -223,14 +223,14 @@ def get_glove_bert_dataloaders(file_path : str, mode='train',train_batch_size=64
     edit = df['edit']
 
     X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
-    X2 = [sent.replace(replaced[i], "<" + edit[i] + "/>") for i, sent in enumerate(X)]
+    X2 = [sent.replace(replaced[i], "<" + edit[i] + "<") for i, sent in enumerate(X)]
     glove_tokens, glove_vectors = get_glove_embeddings(X2)
     word2ind = {word.lower(): i for i, word in enumerate(sorted(glove_vectors.keys()))}
     vectors = np.asarray([glove_vectors[key] for key in sorted(glove_vectors.keys())])
     X_glove = np.asarray([np.array([word2ind[word] if word in word2ind else word2ind['<other>'] for word in glove_tokens[i]]) for i in range(len(glove_tokens))])
     MAX_LEN = max([len(x) for x in glove_tokens]) + 1
     X_glove = pad_sequences(X_glove, MAX_LEN, 'long', 'post', 'post')
-    X, entity_locs = tokenize_bert(X2,False)
+    X, entity_locs = tokenize_bert(X2,True)
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X, y,
                                                                                             random_state=2019,
@@ -252,15 +252,26 @@ def get_glove_bert_dataloaders(file_path : str, mode='train',train_batch_size=64
         vectors = torch.tensor(vectors)
 
         train_data = TensorDataset(train1_inputs, train_glove_emb, train_entity_locs, train_labels)
-        train_sampler = RandomSampler(train_data)
-        train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
+        train_dataloader = DataLoader(train_data, batch_size=train_batch_size,shuffle=True)
 
         # validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
         validation_data = TensorDataset(validation1_inputs, validation_glove_emb, validation_entity_locs,
                                         validation_labels)
-        validation_sampler = SequentialSampler(validation_data)
-        validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
+        validation_dataloader = DataLoader(validation_data, batch_size=test_batch_size,shuffle=True)
         return train_dataloader, validation_dataloader, vectors
+
+    if mode == "test":
+        test1_input = torch.tensor(X)
+        test2_input = torch.tensor(X_glove)
+
+        train_entity_locs = torch.tensor(entity_locs)
+        #word2vec_locs = torch.tensor(word2vec_indices)
+        id = torch.tensor(id)
+        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,id)
+        test_sampler = SequentialSampler(test_data)
+        test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
+
+        return test_data_loader
 
 def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size=64,test_batch_size = 64):
     df = pd.read_csv(file_path, sep=",")

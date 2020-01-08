@@ -66,12 +66,12 @@ class RBERT(nn.Module):
 
         self.add_joke_model = add_joke_model
         self.epochs = epochs
-        self.linear_joke = nn.Sequential(nn.Dropout(0.3), nn.Linear(768, 2))
+        self.linear_joke = nn.Sequential(nn.Dropout(0.1), nn.Linear(768*4, 1))
         self.linear_reg1 = nn.Sequential(
             nn.Dropout(0.1),
-            nn.Linear(600, 128))
-        self.linear_reg2 = nn.Sequential(nn.Dropout(0.1),nn.Linear(128,1))
+            nn.Linear(600, 1))
 
+        self.linear_mod = nn.Linear(2,1)
         if self.task:
             self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(768*8, 1))
         else:
@@ -200,11 +200,25 @@ class RBERT(nn.Module):
 
     def forward(self, *input):
         input = input[0]
+        final_out = []
+        bert_out_seq,_,attention_layer_inps = self.bert_model(input[0])
+        bert_out_seq = torch.cat((bert_out_seq,attention_layer_inps[11]),2)
+        for (i, loc) in enumerate(input[2]):
+            # +1 is to ensure that the symbol token is not considered
+            entity1 = torch.mean(bert_out_seq[i, loc[0]:loc[1] + 1], 0)
+            imp_seq1 = torch.cat((bert_out_seq[i, 0:loc[0]], bert_out_seq[i, loc[1]+1:]), 0)
+            _, attention_score = self.attention(entity1.unsqueeze(0).unsqueeze(0), imp_seq1.unsqueeze(0))
+            sent_attn1 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq1, 0)
+            bert_out = self.linear_joke(torch.cat((sent_attn1,entity1),0))
+            final_out.append(bert_out)
         out = self.word_embeddings(input[1])
         out,(hn,cn) = self.lstm(out)
         out = self.multihead_attn(out,out,out)
-        out = torch.mean(out,1)
-        return self.linear_reg2(torch.tanh(self.linear_reg1(out[0][:,-1,:].reshape(-1,600))))
+        out = torch.mean(out[0],1)
+        out = self.linear_reg1(out)
+        final_out = torch.stack(final_out)
+        final_out = torch.cat((out,final_out),1)
+        return self.linear_mod(final_out)
 
     def forward_sent_emb(self, *input) :
         final_out = []
@@ -445,7 +459,11 @@ class RBERT(nn.Module):
         #var2 = [{'params': x for x in list(set(self.parameters()).difference(self.bert_model.encoder.parameters()))}]
         #optimizer = AdamW(list(self.bert_model.parameters())+list(self.final_linear.parameters())+list(self.word_embeddings.parameters())+list(self.attention.parameters())+list(self.linear_reg1.parameters())+list(self.lstm.parameters()),
         #                       lr = self.lr,weight_decay=1e-3,correct_bias=True)
-        optimizer = AdamW(list(self.linear_reg1.parameters()) + list(self.lstm.parameters())+list(self.linear_reg2.parameters())+list(self.word_embeddings.parameters())+list(self.multihead_attn.parameters()),lr = self.lr,weight_decay=1e-3,correct_bias=True)
+        optimizer = AdamW(list(self.linear_reg1.parameters()) + list(self.lstm.parameters())+
+                          list(self.word_embeddings.parameters())+list(self.multihead_attn.parameters())
+                          +list(self.bert_model.parameters())+list(self.linear_joke.parameters())+list(self.linear_mod.parameters())+
+                          list(self.attention.parameters())
+                          ,lr = self.lr,weight_decay=1e-3,correct_bias=True)
         #scheduler = get_constant_schedule_with_warmup(optimizer,100)
         #optimizer = optim.Adam(var1+var2,lr=2e-5,weight_decay=1e-3)
         #optimizer = optim.Adam([filter(lambda x: not hasattr(x,'encoder'), self.parameters())]
@@ -472,14 +490,15 @@ class RBERT(nn.Module):
         best_accuracy = -sys.maxsize
 
         for epoch in range(self.epochs):
-            #self.bert_model.train()
+            self.bert_model.train()
             self.word_embeddings.train()
             #self.nn_embeddings.train()
-            #self.attention.train()
+            self.attention.train()
             self.multihead_attn.train()
             self.linear_reg1.train()
-            self.linear_reg2.train()
             self.lstm.train()
+            self.linear_joke.train()
+            self.linear_mod.train()
             #if epoch == 5:
             #self.freeze(epoch)
             for param_group in optimizer.param_groups:
@@ -526,14 +545,15 @@ class RBERT(nn.Module):
                 # Ensure that dropout behavior is correct.
                 predictions = []
                 ground_truth = []
-                #self.bert_model.eval()
-                #self.attention.eval()
+                self.bert_model.eval()
+                self.attention.eval()
                 self.word_embeddings.eval()
                 self.multihead_attn.eval()
                 #self.nn_embeddings.eval()
                 self.linear_reg1.eval()
                 self.lstm.eval()
-                self.linear_reg2.eval()
+                self.linear_joke.eval()
+                self.linear_mod.eval()
                 #self.final_linear.eval()
                 mse_loss = 0
                 for (val_batch_num, val_batch) in enumerate(val_dataloader):
@@ -592,7 +612,7 @@ class RBERT(nn.Module):
             #pass
             self.load_state_dict(torch.load(model_path))
         if self.task == 1:
-            test_dataloader = get_sent_emb_dataloaders_bert(self.test_file_path, mode="test")
+            test_dataloader = get_glove_bert_dataloaders(self.test_file_path, mode="test")
 
         else:
             test_dataloader = get_dataloaders_bert_task2(self.test_file_path, "test")

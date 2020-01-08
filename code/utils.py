@@ -4,6 +4,10 @@ import numpy as np
 import spacy
 import re
 
+def sort_joke():
+   df = pd.read_csv('../data/task-1/train.csv')
+   df.sort_values(by=['meanGrade'],ascending=False,inplace=True)
+   df.to_csv('../data/task-1/sorted.csv',index=False)
 
 def gen():
    df = pd.read_csv('../data/task-1/train.csv')
@@ -76,4 +80,4 @@ def pos_tag(sentences, word):
    return pos, vectors
 
 if __name__ == '__main__':
-   gen()
+   sort_joke()
