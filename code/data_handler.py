@@ -7,7 +7,8 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 import json
 import gensim
 from pytorch_transformers import BertTokenizer,DistilBertTokenizer, RobertaTokenizer
-from utils import pos_tag
+from transformers import AlbertTokenizer
+from utils import pos_tag,get_glove_embeddings
 
 def convert_task2_to_task1():
     df2 = pd.read_csv("../data/task-2/train.csv")
@@ -163,9 +164,9 @@ def tokenize_bert_sent(X1: list, X2 : list ):
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
     X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
-    sent_emb = [[0 if i<sentence.index(102) else 1 for i  in range(len(sentence)) ] for sentence in X]
+    sent_emb = [[0 if i<sentence.index(102) else 1 for i  in range(len(sentence))] for sentence in X]
     MAX_LEN = max([len(x) for x in sent_emb])+1
-    # Pad sequences to make them all eqally long
+    # Pad sequences to make them all equally long
     X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post',0)
     sent_emb = pad_sequences(sent_emb,MAX_LEN,'long','post','post',1)
     # Find the locations of each entity and store them
@@ -190,7 +191,7 @@ def tokenize_bert(X: list, org : bool):
     sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
 
     # Load the tokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', add_special_tokens=True)
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     #tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
     # Tokenize and vectorize
     tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
@@ -209,26 +210,95 @@ def tokenize_bert(X: list, org : bool):
 
     return X,entity_locs
 
-def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size=64,test_batch_size = 64):
+
+def get_glove_bert_dataloaders(file_path : str, mode='train',train_batch_size=64,test_batch_size = 64):
     df = pd.read_csv(file_path, sep=",")
     id = df['id']
     X = df['original'].values
     X = [sent.replace("\"", "") for sent in X]
     replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">") + 1])
+    replaced_clean = [x.replace("<", "").replace("/>", "") for x in replaced]
     if mode == 'train':
         y = df['meanGrade'].values
     edit = df['edit']
 
     X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
     X2 = [sent.replace(replaced[i], "<" + edit[i] + "/>") for i, sent in enumerate(X)]
-    X2 = [sent.replace("<" + edit[i] + "/>", "^ " + edit[i] + " ^") for i, sent in enumerate(X2)]
-    X, sent_emb, entity_locs = tokenize_bert_sent(X1,X2)
-
+    glove_tokens, glove_vectors = get_glove_embeddings(X2)
+    word2ind = {word.lower(): i for i, word in enumerate(sorted(glove_vectors.keys()))}
+    vectors = np.asarray([glove_vectors[key] for key in sorted(glove_vectors.keys())])
+    X_glove = np.asarray([np.array([word2ind[word] if word in word2ind else word2ind['<other>'] for word in glove_tokens[i]]) for i in range(len(glove_tokens))])
+    MAX_LEN = max([len(x) for x in glove_tokens]) + 1
+    X_glove = pad_sequences(X_glove, MAX_LEN, 'long', 'post', 'post')
+    X, entity_locs = tokenize_bert(X2,False)
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X, y,
                                                                                             random_state=2019,
                                                                                             test_size=0.2)
         train_entity_locs, validation_entity_locs, _, _ = train_test_split(entity_locs, y,
+                                                                           random_state=2019, test_size=0.2)
+
+        train_glove_emb, validation_glove_emb, _, _ = train_test_split(X_glove, y,
+                                                                          random_state=2019, test_size=0.2)
+
+        train1_inputs = torch.tensor(train1_inputs)
+        validation1_inputs = torch.tensor(validation1_inputs)
+        train_labels = torch.tensor(train_labels)
+        validation_labels = torch.tensor(validation_labels)
+        train_entity_locs = torch.tensor(train_entity_locs)
+        validation_entity_locs = torch.tensor(validation_entity_locs)
+        train_glove_emb = torch.tensor(train_glove_emb)
+        validation_glove_emb = torch.tensor(validation_glove_emb)
+        vectors = torch.tensor(vectors)
+
+        train_data = TensorDataset(train1_inputs, train_glove_emb, train_entity_locs, train_labels)
+        train_sampler = RandomSampler(train_data)
+        train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=train_batch_size)
+
+        # validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
+        validation_data = TensorDataset(validation1_inputs, validation_glove_emb, validation_entity_locs,
+                                        validation_labels)
+        validation_sampler = SequentialSampler(validation_data)
+        validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
+        return train_dataloader, validation_dataloader, vectors
+
+def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size=64,test_batch_size = 64):
+    df = pd.read_csv(file_path, sep=",")
+    id = df['id']
+    X = df['original'].values
+    X = [sent.replace("\"", "") for sent in X]
+    replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">") + 1])
+    replaced_clean = [x.replace("<", "").replace("/>", "") for x in replaced]
+    if mode == 'train':
+        y = df['meanGrade'].values
+    edit = df['edit']
+
+    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
+    X2 = [sent.replace(replaced[i], "<" + edit[i] + "/>") for i, sent in enumerate(X)]
+    org_tag, org_vectors = pos_tag(X, replaced)
+    edited_tag, edited_vectors = pos_tag(X2, edit)
+    org_vectors.update(edited_vectors)
+    X2 = [sent.replace("<" + edit[i] + "/>", "^ " + edit[i] + " ^") for i, sent in enumerate(X2)]
+    X, sent_emb, entity_locs = tokenize_bert_sent(X1,X2)
+
+    word2ind = {word.lower(): i for i, word in enumerate(sorted(org_vectors.keys()))}
+    vectors = np.asarray([org_vectors[key] for key in sorted(org_vectors.keys())])
+    X1_glove = np.asarray([[word2ind[word] for word in X1[i]] for i in range(len(X1))])
+    X2_glove = np.asarray([[word2ind[word] for word in X2[i]] for i in range(len(X2))])
+    X_glove = np.concatenate((X1_glove,X2_glove),0)
+    glove_replaced = np.asarray(
+        [word2ind[replaced_clean[i]] if replaced_clean[i] in word2ind else word2ind['<other>'] for i in
+         range(len(replaced_clean))]).reshape(-1, 1)
+    glove_edited = np.asarray(
+        [word2ind[edit[i]] if edit[i] in word2ind else word2ind['<other>'] for i in range(len(edit))]).reshape(-1, 1)
+    glove_indices = np.concatenate((glove_replaced, glove_edited), 1)
+    replacement_locs = np.concatenate((entity_locs, glove_indices), 1)
+
+    if mode == "train":
+        train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X, y,
+                                                                                            random_state=2019,
+                                                                                            test_size=0.2)
+        train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
                                                                            random_state=2019, test_size=0.2)
 
         train_sent_emb, validation_sent_emb, _, _ = train_test_split(sent_emb, y,
@@ -242,7 +312,7 @@ def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size
         validation_entity_locs = torch.tensor(validation_entity_locs)
         train_sent_emb = torch.tensor(train_sent_emb)
         validation_sent_emb = torch.tensor(validation_sent_emb)
-
+        vectors = torch.tensor(vectors)
 
         # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
         # with an iterator the entire dataset does not need to be loaded into memory
@@ -256,13 +326,13 @@ def get_sent_emb_dataloaders_bert(file_path : str, mode='train',train_batch_size
         validation_data = TensorDataset(validation1_inputs, validation_sent_emb, validation_entity_locs,validation_labels)
         validation_sampler = SequentialSampler(validation_data)
         validation_dataloader = DataLoader(validation_data, sampler=validation_sampler, batch_size=test_batch_size)
-        return  train_dataloader, validation_dataloader
+        return  train_dataloader, validation_dataloader, vectors
 
     if mode == "test":
         test1_input = torch.tensor(X)
         test2_input = torch.tensor(sent_emb)
 
-        train_entity_locs = torch.tensor(entity_locs)
+        train_entity_locs = torch.tensor(replacement_locs)
         #word2vec_locs = torch.tensor(word2vec_indices)
         id = torch.tensor(id)
         test_data = TensorDataset(test1_input, test2_input, train_entity_locs,id)
@@ -327,16 +397,16 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
     if mode == "train":
         train1_inputs, validation1_inputs, train_labels, validation_labels = train_test_split(X1, y,
                                                                                             random_state=2019,
-                                                                                            test_size=0.2)
+                                                                                            test_size=0.05)
         train2_inputs, validation2_inputs, _, _ = train_test_split(X2, y,
                                                                                               random_state=2019,
-                                                                                              test_size=0.2)
+                                                                                              test_size=0.05)
         train_entity_locs, validation_entity_locs, _, _ = train_test_split(replacement_locs, y,
-                                                                           random_state=2019, test_size=0.2)
+                                                                           random_state=2019, test_size=0.05)
 
         if model:
             train_word2vec_locs, validation_word2vec_locs, _, _ = train_test_split(word2vec_indices, y,
-                                                                          random_state=2019, test_size=0.2)
+                                                                          random_state=2019, test_size=0.05)
 
         train1_inputs = torch.tensor(train1_inputs)
         validation1_inputs = torch.tensor(validation1_inputs)

@@ -2,6 +2,13 @@ import pickle
 import pandas as pd
 import numpy as np
 import spacy
+import re
+
+
+def gen():
+   df = pd.read_csv('../data/task-1/train.csv')
+   df['Joke'] = df['original'].apply(lambda x: re.sub('<|/>','',x))
+   df.to_csv('../data/task-1/shortjokes2.csv',columns=['Joke'],mode='a',header=False)
 
 def joke_file_prcessing():
    '''
@@ -23,6 +30,26 @@ def joke_file_prcessing():
       df = pd.concat((df,df2),0,ignore_index=True)
       df.to_csv("joke_classification.csv")
 
+def get_glove_embeddings(sentences):
+   nlp = spacy.load("en_core_web_lg", disable=['parser', 'ner','tagger'])
+   sentences = [sent.replace("<", "").replace("/>", "") for sent in sentences]
+   tokens = []
+   vectors = {}
+   for ind,sentence in enumerate(sentences):
+      doc = nlp(sentence)
+      tokens.append([])
+      tokens[-1].append("<SOS>")
+      for token in doc:
+         tokens[-1].append(token.text.lower())
+         if token.text.lower() not in vectors:
+            vectors[token.text.lower()] = token.vector
+
+      tokens[-1].append("<EOS>")
+   vectors['<other>'] = np.random.uniform(0, 1, 300)
+   vectors['<SOS>'] = np.random.uniform(0, 1, 300)
+   vectors['<EOS>'] = np.random.uniform(0, 1, 300)
+   return tokens,vectors
+
 
 def pos_tag(sentences, word):
    nlp = spacy.load("en_core_web_lg", disable=['parser','ner'])
@@ -36,11 +63,17 @@ def pos_tag(sentences, word):
          word_cl = word[ind].strip("<|/>")
          if token.text==word_cl:
             pos.append(token.pos_)
-            break
-         if word_cl not in vectors:
-             vectors[word_cl] = token.vector
+         if token.text.lower() not in vectors:
+             vectors[token.text] = token.vector
 
       if len(pos)!=ind+1:
         pos.append("NOUN")
+
    vectors['<other>'] = np.random.uniform(0,1,300)
+   vectors['[CLS]'] = np.random.uniform(0,1,300)
+   vectors['[SEP]'] = np.random.uniform(0,1,300)
+
    return pos, vectors
+
+if __name__ == '__main__':
+   gen()
