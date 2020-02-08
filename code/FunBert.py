@@ -46,10 +46,10 @@ class RBERT(nn.Module):
         self.train_file_path = train_file_path
         self.lm_file_path = lm_file_path
         self.nn_embeddings = torch.nn.Embedding(13, 300)
-        self.word_embeddings = torch.nn.Embedding(10548,300)
+        self.word_embeddings = torch.nn.Embedding(11829,300)
         self.multihead_attn = nn.MultiheadAttention(embed_dim=600,num_heads=1,dropout=0.1)
         self.lstm = nn.LSTM(300,300,bidirectional=True,batch_first=True,num_layers=2)
-        self.attention = nn_nlp.Attention(768*2)
+        self.attention = nn_nlp.Attention(768*2,'dot')
         #self.entity_layer = nn.Sequential(nn.Dropout(0.3), nn.Linear(768 + 300, 768))
         self.word2vec = word2vec
         self.dev_file_path = dev_file_path
@@ -59,7 +59,7 @@ class RBERT(nn.Module):
         self.task = task
 
         if word2vec=='true':
-            self.gensim_model = gensim.models.KeyedVectors.load_word2vec_format('GoogleNews-vectors-negative300.bin.gz',
+            self.gensim_model = gensim.models.KeyedVectors.load_word2vec_format('D:\Humor\GoogleNews-vectors-negative300.bin',
                                                                                 binary=True)
         else:
             self.gensim_model = None
@@ -69,11 +69,12 @@ class RBERT(nn.Module):
         self.linear_joke = nn.Sequential(nn.Dropout(0.1), nn.Linear(768*4, 1))
         self.linear_reg1 = nn.Sequential(
             nn.Dropout(0.1),
-            nn.Linear(600, 1))
-
+            nn.Linear(768*8+300, 256))
+        
+        self.alpha = nn.Parameter(torch.ones(1))
         self.linear_mod = nn.Linear(2,1)
         if self.task:
-            self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(768*8, 1))
+            self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(256, 1))
         else:
             self.final_linear = nn.Sequential(nn.Dropout(0.3), nn.Linear(100, 2))
 
@@ -84,12 +85,12 @@ class RBERT(nn.Module):
 
     def init_embeddings(self, ind: np.ndarray):
         ind = np.unique(ind.reshape(-1))
-        self.nn_embeddings = torch.nn.Embedding(len(ind), 300).cuda()
-        self.emb_key = {str(ind[i]): i for i in range(len(ind))}
+        self.word_embeddings = torch.nn.Embedding(len(ind), 300).cuda()
+        self.emb_key = {int(ind[i]): i for i in range(len(ind))}
         with open("word2vec_ind.json", 'w') as f:
             json.dump(self.emb_key, f)
         emb_values = np.take(self.gensim_model.vectors, ind, 0)
-        self.nn_embeddings.load_state_dict({'weight': torch.tensor(emb_values)})
+        self.word_embeddings.load_state_dict({'weight': torch.tensor(emb_values)})
         del self.gensim_model
 
     def load_joke_lm_weights(self, lm_path: str):
@@ -116,13 +117,13 @@ class RBERT(nn.Module):
 
         train_dataloader = get_bert_lm_dataloader(self.lm_file_path,32)
         print("Training LM")
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() :
             self.bert_model.cuda()
         for epoch in range(1):
             print("Epoch : " + str(epoch))
             for ind, batch in enumerate(train_dataloader):
                 optimizer.zero_grad()
-                if torch.cuda.is_available():
+                if torch.cuda.is_available() :
                     inp = batch[0].cuda()
                 else:
                     inp = batch[0]
@@ -201,7 +202,7 @@ class RBERT(nn.Module):
     def forward(self, *input):
         input = input[0]
         final_out = []
-        bert_out_seq,_,attention_layer_inps = self.bert_model(input[0])
+        bert_out_seq,_,attention_layer_inps = self.bert_model(input[0].long())
         bert_out_seq = torch.cat((bert_out_seq,attention_layer_inps[11]),2)
         for (i, loc) in enumerate(input[2]):
             # +1 is to ensure that the symbol token is not considered
@@ -211,14 +212,14 @@ class RBERT(nn.Module):
             sent_attn1 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq1, 0)
             bert_out = self.linear_joke(torch.cat((sent_attn1,entity1),0))
             final_out.append(bert_out)
-        out = self.word_embeddings(input[1])
+        word2vec_indices = [[self.emb_key[str(col.item())] if str(col.item()) in self.emb_key else self.emb_key[str(-1)]  for col in input[1][row]]for row in range(len(input[1]))]
+        out = self.word_embeddings(torch.tensor(word2vec_indices).cuda().long())
         out,(hn,cn) = self.lstm(out)
         out = self.multihead_attn(out,out,out)
-        out = torch.mean(out[0],1)
+        out = out[0][:,-1]
         out = self.linear_reg1(out)
         final_out = torch.stack(final_out)
-        final_out = torch.cat((out,final_out),1)
-        return self.linear_mod(final_out)
+        return self.alpha*final_out + (1-self.alpha)*out
 
     def forward_sent_emb(self, *input) :
         final_out = []
@@ -228,22 +229,20 @@ class RBERT(nn.Module):
         pos = input[0].clone().detach().cpu()
         for (i, loc) in enumerate(input[2]):
             # +1 is to ensure that the symbol token is not considered
-            entity1 = torch.mean(out_per_seq[i,loc[0]:loc[1]+1],0)
-            entity2 = torch.mean(out_per_seq[i, loc[2]:loc[3]+1], 0)
-            imp_seq1 = torch.cat((out_per_seq[i, 0:loc[0] + 1], out_per_seq[i, loc[1]:]), 0)
-            imp_seq2 = torch.cat((out_per_seq[i, np.where(pos[i].numpy()==102)[0][0]:loc[2] + 1], out_per_seq[i, loc[3]:]), 0)
+            entity1 = torch.mean(out_per_seq[i,loc[0]+1:loc[1]],0)
+            entity2 = torch.mean(out_per_seq[i, loc[2]+1:loc[3]], 0)
+            #imp_seq1 = torch.cat((out_per_seq[i, 0:loc[0]], out_per_seq[i, loc[1]+1:]), 0)
+            imp_seq2 = torch.cat((out_per_seq[i, np.where(pos[i].numpy()==102)[0][0]:loc[2]], out_per_seq[i, loc[3]+1:]), 0)
             _, attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0), imp_seq2.unsqueeze(0))
             sent_attn2 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq2, 0)
-            _, attention_score = self.attention(entity1.unsqueeze(0).unsqueeze(0), imp_seq1.unsqueeze(0))
-            sent_attn1 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq1, 0)
-            entity1_gl = self.word_embeddings(loc[4])
-            entity2_gl = self.word_embeddings(loc[5])
-            entity1_gl = torch.relu(self.linear_reg1(torch.cat((entity1,entity1_gl),0)))
-            entity2_gl = torch.relu(self.linear_reg1(torch.cat((entity2,entity2_gl),0)))
+            #_, attention_score = self.attention(entity1.unsqueeze(0).unsqueeze(0), imp_seq1.unsqueeze(0))
+            #sent_attn1 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq1, 0)
+            entity1_gl = self.word_embeddings(torch.tensor(self.emb_key[loc[4].item()]).cuda())
+            entity2_gl = self.word_embeddings(torch.tensor(self.emb_key[loc[5].item()]).cuda())
             entity_glove_diff = torch.abs(entity2_gl-entity1_gl)
             #attn_diff = torch.abs(sent_attn2-sent_attn1)
-            out = self.final_linear(torch.cat((out_per_seq[i,0,:],sent_attn2,sent_attn1,entity_glove_diff)))
-            final_out.append(out)
+            out = torch.tanh(self.linear_reg1(torch.cat((out_per_seq[i,0,:],sent_attn2,entity2,entity_glove_diff))))
+            final_out.append(self.final_linear(out))
         #out = self.final_linear(torch.cat((out_per_seq[:, 0, :],entity_diff), 1))
 
         return torch.stack(final_out)
@@ -452,18 +451,19 @@ class RBERT(nn.Module):
     def train(self, mode=True):
         # if self.add_joke_model :
         #    self.load_joke_lm_weights("joke_classification_bert.pth")
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() :
             self.cuda()
         self.bert_model = self.bert_model.bert
         #var1 = [{'params':self.bert_model.encoder.layer[i].parameters(), 'lr': 2e-5*(0.95**((12-i))),'weight_decay':0.001} for i in range(12)]
         #var2 = [{'params': x for x in list(set(self.parameters()).difference(self.bert_model.encoder.parameters()))}]
         #optimizer = AdamW(list(self.bert_model.parameters())+list(self.final_linear.parameters())+list(self.word_embeddings.parameters())+list(self.attention.parameters())+list(self.linear_reg1.parameters())+list(self.lstm.parameters()),
         #                       lr = self.lr,weight_decay=1e-3,correct_bias=True)
-        optimizer = AdamW(list(self.linear_reg1.parameters()) + list(self.lstm.parameters())+
-                          list(self.word_embeddings.parameters())+list(self.multihead_attn.parameters())
-                          +list(self.bert_model.parameters())+list(self.linear_joke.parameters())+list(self.linear_mod.parameters())+
-                          list(self.attention.parameters())
-                          ,lr = self.lr,weight_decay=1e-3,correct_bias=True)
+        optimizer = AdamW(self.parameters(),lr=self.lr,weight_decay=1e-3,correct_bias=True)
+        #optimizer = AdamW(list(self.linear_reg1.parameters()) + list(self.lstm.parameters())+
+        #                  list(self.word_embeddings.parameters())+list(self.multihead_attn.parameters())
+        #                  +list(self.bert_model.parameters())+list(self.linear_joke.parameters())+list(self.linear_mod.parameters())+
+        #                  list(self.attention.parameters()+list(self.alpha.parameters()))
+        #                  ,lr = self.lr,weight_decay=1e-3,correct_bias=True)
         #scheduler = get_constant_schedule_with_warmup(optimizer,100)
         #optimizer = optim.Adam(var1+var2,lr=2e-5,weight_decay=1e-3)
         #optimizer = optim.Adam([filter(lambda x: not hasattr(x,'encoder'), self.parameters())]
@@ -473,10 +473,10 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             loss = nn.MSELoss()
-            train_dataloader, val_dataloader, vectors = get_glove_bert_dataloaders(self.train_file_path,
+            train_dataloader, val_dataloader,word2vec_ind = get_sent_emb_dataloaders_bert(self.train_file_path,
                                                                                   mode="train",
-                                                                                  train_batch_size = self.train_batch_size)
-            self.word_embeddings.load_state_dict({'weight': vectors})
+                                                                                  train_batch_size = self.train_batch_size,test_batch_size=self.train_batch_size,model=self.gensim_model)
+            #self.word_embeddings.load_state_dict({'weight': vectors})
 
 
         else:
@@ -490,6 +490,7 @@ class RBERT(nn.Module):
         best_accuracy = -sys.maxsize
 
         for epoch in range(self.epochs):
+            print(f" Alpha value is : {self.alpha}")
             self.bert_model.train()
             self.word_embeddings.train()
             #self.nn_embeddings.train()
@@ -499,6 +500,7 @@ class RBERT(nn.Module):
             self.lstm.train()
             self.linear_joke.train()
             self.linear_mod.train()
+            
             #if epoch == 5:
             #self.freeze(epoch)
             for param_group in optimizer.param_groups:
@@ -506,7 +508,7 @@ class RBERT(nn.Module):
             total_prev_loss = 0
             for (batch_num, batch) in enumerate(train_dataloader):
                 # If gpu is available move to gpu.
-                if torch.cuda.is_available():
+                if torch.cuda.is_available() :
                     input1 = batch[0].cuda()
                     input2 = batch[1].cuda()
                     locs = batch[2].cuda()
@@ -524,7 +526,7 @@ class RBERT(nn.Module):
                 # Clear gradients
                 optimizer.zero_grad()
                 if self.word2vec=='true':
-                    final_scores = self.forward((input1, input2, locs, word2vec_locs))
+                    final_scores = self.forward_sent_emb((input1, input2, locs))
                 else:
                     final_scores = self.forward((input1, input2, locs))
                 if self.task == 1:
@@ -557,7 +559,7 @@ class RBERT(nn.Module):
                 #self.final_linear.eval()
                 mse_loss = 0
                 for (val_batch_num, val_batch) in enumerate(val_dataloader):
-                    if torch.cuda.is_available():
+                    if torch.cuda.is_available() :
                         input1 = val_batch[0].cuda()
                         input2 = val_batch[1].cuda()
                         locs = val_batch[2].cuda()
@@ -570,8 +572,8 @@ class RBERT(nn.Module):
                         #word2vec_locs = val_batch[3]
                         gt = val_batch[3]
 
-                    if self.word2vec=='true':
-                        final_scores = self.forward((input1, input2, locs, word2vec_locs))
+                    if self.word2vec == 'true':
+                        final_scores = self.forward_sent_emb((input1, input2, locs))
                     else:
                         final_scores = self.forward((input1, input2, locs))
 
@@ -609,16 +611,18 @@ class RBERT(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
-            #pass
-            self.load_state_dict(torch.load(model_path))
+            pass
+            #self.load_state_dict(torch.load(model_path))
         if self.task == 1:
-            test_dataloader = get_glove_bert_dataloaders(self.test_file_path, mode="test")
+            test_dataloader = get_glove_bert_dataloaders(self.test_file_path, mode="test",model=self.gensim_model)
 
         else:
             test_dataloader = get_dataloaders_bert_task2(self.test_file_path, "test")
         self.bert_model.eval()
         self.linear_reg1.eval()
         self.final_linear.eval()
+        with open("word2vec_ind.json",'r') as f:
+            self.emb_key = json.load(f)
         with torch.no_grad():
             with open("task-1-output.csv", "w+") as f:
                 f.writelines("id,pred\n")
@@ -627,7 +631,7 @@ class RBERT(nn.Module):
                         input1 = batch[0].cuda()
                         input2 = batch[1].cuda()
                         locs = batch[2].cuda()
-                       # word2vec_indices = batch[3].cuda()
+                        #word2vec_indices = batch[3].cuda()
                         id = batch[3].cuda()
                     else:
                         input1 = batch[0]
@@ -660,7 +664,7 @@ if __name__ == '__main__':
     parser.add_argument("--predict", type=str, default='false', required=False)
     parser.add_argument("--add_joke_train", type=str, default='true', required=False)
     parser.add_argument("--lm_pretrain", type=str, default='false', required=False)
-    parser.add_argument("--word2vec", type=str, default='false', required=False)
+    parser.add_argument("--word2vec", type=str, default='true', required=False)
     parser.add_argument("--joke_classification_path", type=str, default='../data/task-1/joke_classification.csv',
                         required=False)
     parser.add_argument("--lr", type=float, default=2e-5, required=False)
