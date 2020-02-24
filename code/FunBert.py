@@ -13,7 +13,7 @@ import gensim
 import numpy as np
 import json
 
-torch.manual_seed(4)
+torch.manual_seed(7)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
@@ -446,7 +446,7 @@ class RBERT(nn.Module):
             #optimizer = optim.Adam(filter(lambda x: x.requires_grad, self.parameters()), lr=self.lr, weight_decay=0.001)
             if epoch == 0:
                 #scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5, 7, 9], gamma=0.01)
-                scheduler = get_linear_schedule_with_warmup(optimizer,70,610)
+                scheduler = get_linear_schedule_with_warmup(optimizer,140,1400)
             total_prev_loss = 0
             for (batch_num, batch) in enumerate(train_dataloader):
                 # If gpu is available move to gpu.
