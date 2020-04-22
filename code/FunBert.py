@@ -4,7 +4,7 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error
 import sys
 from transformers.optimization import AdamW,get_linear_schedule_with_warmup
-from transformers import BertForMaskedLM, DistilBertForMaskedLM, RobertaModel, BertModel
+from transformers import BertForMaskedLM, DistilBertForMaskedLM, RobertaModel, BertModel,DistilBertModel,RobertaForMaskedLM
 from pytorch_pretrained_bert import BertAdam
 import argparse
 from data_handler import *
@@ -13,7 +13,7 @@ import gensim
 import numpy as np
 import json
 
-torch.manual_seed(7)
+torch.manual_seed(12)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
@@ -35,7 +35,7 @@ class RBERT(nn.Module):
         '''
 
         super(RBERT, self).__init__()
-        self.bert_model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+        self.bert_model = RobertaForMaskedLM.from_pretrained('roberta-base', output_hidden_states=True)
         if lm_pretrain != 'true':
             pass
             # self.load_joke_lm_weights(lm_weights_file_path)
@@ -97,26 +97,38 @@ class RBERT(nn.Module):
                 param.requires_grad = True
 
     def pre_train_bert(self):
-        optimizer = BertAdam(self.bert_model.parameters(), 2e-5)
-        train_dataloader = get_bert_lm_dataloader(self.lm_file_path)
+        optimizer = optim.Adam(self.bert_model.parameters(), 2e-5)
+        scheduler = get_linear_schedule_with_warmup(optimizer, 56, 560)
+        step = 0
+        train_dataloader = get_bert_lm_dataloader(self.lm_file_path, 64)
         print("Training LM")
         if torch.cuda.is_available():
             self.bert_model.cuda()
-        for epoch in range(1):
+        for epoch in range(2):
             print("Epoch : " + str(epoch))
             for ind, batch in enumerate(train_dataloader):
+                step += 1
+
                 optimizer.zero_grad()
                 if torch.cuda.is_available():
                     inp = batch[0].cuda()
                 else:
                     inp = batch[0]
-                outputs = self.bert_model(inp, masked_lm_labels=inp)
+                pos = torch.randint(high=inp.shape[1], size=(10*inp.shape[0],))
+                rows = torch.repeat_interleave([0])
+                pos = pos.reshape((inp.shape[0],10))
+                labels = inp.clone()
+                labels[pos] = -100
+                labels[inp == 1] = -100
+                mask = (inp!=1).long()
+                inp[pos] = 50264
+                outputs = self.bert_model(inp, masked_lm_labels=labels.long(),attention_mask=mask)
                 loss, prediction_scores = outputs[:2]
                 loss.backward()
-                print("Loss is :" + str(loss.item()))
+                #torch.nn.utils.clip_grad_norm_(self.bert_model.parameters(), 1.0)
+                print(str(step) + " Loss is :" + str(loss.item()))
                 optimizer.step()
-                if ind > 2000:
-                    break
+                scheduler.step()
         print("LM training done")
         torch.save(self.bert_model.state_dict(), "lm_joke_bert.pth")
 
@@ -181,22 +193,23 @@ class RBERT(nn.Module):
     def forward1(self, *input) :
         final_out = []
         input = input[0]
-        out_per_seq, _,attention_layer_inps= self.bert_model(input[0].long(),input[1].long())
+        attn_mask0 = (input[0] != 1).long()
+        out_per_seq, _,attention_layer_inps= self.bert_model(input[0].long(),attention_mask=attn_mask0)
         out_per_seq = torch.cat((out_per_seq,attention_layer_inps[11]),2)
         pos = input[0].clone().detach().cpu()
-        for (i, loc) in enumerate(input[2]):
+        for (i, loc) in enumerate(input[1]):
             # +1 is to ensure that the symbol token is not considered
             entity1 = torch.mean(out_per_seq[i,loc[0]+1:loc[1]],0)
             entity2 = torch.mean(out_per_seq[i, loc[2] + 1:loc[3]], 0)
-            entity_diff = torch.abs(entity2-entity1)
             imp_seq1 = torch.cat((out_per_seq[i, 0:loc[0] + 1], out_per_seq[i, loc[1]:]), 0)
-            imp_seq2 = torch.cat((out_per_seq[i, np.where(pos[i].numpy()==102)[0][0]:loc[2] + 1], out_per_seq[i, loc[3]:]), 0)
+            imp_seq2 = torch.cat((out_per_seq[i, np.where(pos[i].numpy()==2)[0][0]:loc[2] + 1], out_per_seq[i, loc[3]:]), 0)
             _, attention_score = self.attention(entity2.unsqueeze(0).unsqueeze(0), imp_seq2.unsqueeze(0))
             sent_attn2 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq2, 0)
             _, attention_score = self.attention(entity1.unsqueeze(0).unsqueeze(0), imp_seq1.unsqueeze(0))
             sent_attn1 = torch.sum(attention_score.squeeze(0).expand(768 * 2, -1).t() * imp_seq1, 0)
             #attn_diff = torch.abs(sent_attn2-sent_attn1)
-            out = self.final_linear(torch.cat((out_per_seq[i,0,:],sent_attn2,sent_attn1,entity_diff)))
+            sent_out = self.prelu(self.linear_reg1(torch.cat((sent_attn2,sent_attn1,out_per_seq[i,0],entity2), 0)))
+            out = self.final_linear(sent_out)
             final_out.append(out)
         #out = self.final_linear(torch.cat((out_per_seq[:, 0, :],entity_diff), 1))
 
@@ -212,12 +225,14 @@ class RBERT(nn.Module):
 
         if self.task == 1:
             input = input[0]
-            output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long())
+            attn_mask0 = (input[0] != 1).long()
+            output_per_seq1,_,attention_layer_inps = self.bert_model(input[0].long(), attention_mask = attn_mask0)
             output_per_seq1 = torch.cat((output_per_seq1, attention_layer_inps[11]), 2)
             # output_per_seq1 = output_per_seq1.transpose(0, 1)
             # output_per_seq1, _ = self.lstm(output_per_seq1)
             # output_per_seq1 = output_per_seq1.transpose(0, 1)
-            output_per_seq2, _, attention_layer_inps = self.bert_model(input[1].long())
+            attn_mask1 = (input[1]!=1).long()
+            output_per_seq2,_,attention_layer_inps = self.bert_model(input[1].long(),attention_mask = attn_mask1)
             output_per_seq2 = torch.cat((output_per_seq2, attention_layer_inps[11]), 2)
             # output_per_seq2 = output_per_seq2.transpose(0,1)
             # output_per_seq2,_ = self.lstm(output_per_seq2)
@@ -255,8 +270,7 @@ class RBERT(nn.Module):
                     sent_out = torch.tanh(
                     self.linear_reg1(torch.cat((sent_attn, output_per_seq2[i, 0], entity2, word2vec_diff), 0)))
                 else:
-                    sent_out = self.prelu(
-                        self.linear_reg1(torch.cat((sent_attn,sent_attn1,output_per_seq2[i, 0], entity2), 0)))
+                    sent_out = self.prelu(self.linear_reg1(torch.cat((sent_attn,sent_attn1,output_per_seq1[i,0],entity2), 0)))
                 final_out = self.final_linear(sent_out)
                 final_scores.append(final_out)
 
@@ -314,10 +328,10 @@ class RBERT(nn.Module):
         loss_2 = nn.CrossEntropyLoss()
 
         optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=0.001)
-        train_dataloader_reg, val_dataloader_reg = get_dataloaders_bert(self.train_file_path,
+        train_dataloader_reg, val_dataloader_reg = get_sent_emb_dataloaders_bert(self.train_file_path,
                                                                               self.gensim_model, "train",
                                                                               self.train_batch_size)
-        train_dataloader_cl, val_dataloader_cl = get_dataloaders_joke_classification(self.joke_classification_path)
+        train_dataloader_cl, val_dataloader_cl = get_sent_emb_dataloaders_bert(self.joke_classification_path)
 
         for epoch in range(self.epochs):
             for batch_num,batch in enumerate(zip(train_dataloader_reg,train_dataloader_cl)):
@@ -416,29 +430,27 @@ class RBERT(nn.Module):
         #    self.load_joke_lm_weights("joke_classification_bert.pth")
         if torch.cuda.is_available():
             self.cuda()
-        #self.bert_model = self.bert_model.bert
+        self.bert_model = self.bert_model.roberta
         optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=0.001)
 
         if self.task == 1:
             loss = nn.MSELoss()
-            train_dataloader = get_dataloaders_bert(self.train_file_path,
-                                                                                  self.gensim_model, "train",
-                                                                                  self.train_batch_size)
+            train_dataloader = get_dataloaders_bert(self.train_file_path,None,'train',self.train_batch_size)
 
-            val_dataloader = get_dataloaders_bert(self.dev_file_path,
-                                                                                  self.gensim_model, "val",
+            val_dataloader = get_dataloaders_bert(self.dev_file_path,None,"val",
                                                                                   self.train_batch_size)
 
         else:
             loss = nn.CrossEntropyLoss()
-            train_dataloader, val_dataloader = get_dataloaders_bert_task2(self.train_file_path, "train",
-                                                                          self.train_batch_size)
+            train_dataloader, val_dataloader = get_dataloaders_bert_task2(self.train_file_path,"train",self.train_batch_size)
 
         if self.word2vec=='true':
             self.init_embeddings(word2vec_ind)
         best_loss = sys.maxsize
         best_accuracy = -sys.maxsize
         steps = 0
+        pred_scores = []
+        gt_scores = []
 
         for epoch in range(self.epochs):
             steps += 1
@@ -474,7 +486,7 @@ class RBERT(nn.Module):
                 if self.word2vec=='true':
                     final_scores = self.forward((input1, input2, locs, word2vec_locs))
                 else:
-                    final_scores = self.forward((input1, input2, locs))
+                    final_scores = self.forward((input1, input2,locs))
                 if self.task == 1:
                     loss_val += loss(final_scores.squeeze(1), gt.float())
                 else:
@@ -493,6 +505,8 @@ class RBERT(nn.Module):
             # Don't compute gradients in validation step
             with torch.no_grad():
                 # Ensure that dropout behavior is correct.
+                pred_scores = []
+                gt_scores = []
                 predictions = []
                 ground_truth = []
                 self.bert_model.eval()
@@ -518,6 +532,8 @@ class RBERT(nn.Module):
                         final_scores = self.forward((input1, input2, locs, word2vec_locs))
                     else:
                         final_scores = self.forward((input1, input2, locs))
+                        pred_scores.extend(final_scores.cpu().detach().squeeze(1))
+                        gt_scores.extend(gt.cpu().detach())
 
                     if self.task == 1:
                         mse_loss += mean_squared_error(final_scores.cpu().detach().squeeze(1), gt.cpu().detach())
@@ -527,7 +543,7 @@ class RBERT(nn.Module):
                         predictions.extend(torch.argmax(final_scores.squeeze(0), 1).tolist())
                         ground_truth.extend(gt.tolist())
 
-                print("Validation Loss is " + str(mse_loss / (val_batch_num + 1)))
+                print(f"Validation Loss is {np.sqrt(mean_squared_error(gt_scores,pred_scores))}")
 
                 if self.task == 1:
                     if mse_loss < best_loss:
@@ -549,18 +565,21 @@ class RBERT(nn.Module):
         '''
 
         #self.bert_model = self.bert_model.bert
+        gts = []
+        preds = []
         if torch.cuda.is_available():
             self.cuda()
         if model_path:
             #pass
             self.load_state_dict(torch.load(model_path))
         if self.task == 1:
-            test_dataloader = get_dataloaders_bert(self.test_file_path, self.gensim_model,"test")
+            test_dataloader = get_dataloaders_bert(self.test_file_path, None,"val")
         else:
             test_dataloader = get_dataloaders_bert_task2(self.test_file_path, "test")
         self.bert_model.eval()
         self.linear_reg1.eval()
         self.final_linear.eval()
+        self.attention.eval()
         with torch.no_grad():
             with open("task-1-output.csv", "w+") as f:
                 f.writelines("id,pred\n")
@@ -570,7 +589,8 @@ class RBERT(nn.Module):
                         input2 = batch[1].cuda()
                         locs = batch[2].cuda()
                        # word2vec_indices = batch[3].cuda()
-                        id = batch[3].cuda()
+                        id = batch[4].cuda()
+                        gt = batch[3].cuda()
                     else:
                         input1 = batch[0]
                         input2 = batch[1]
@@ -582,12 +602,15 @@ class RBERT(nn.Module):
                         final_scores_1 = self.forward((input1, input2, locs))
                     # if self.task == 1:
                     #    final_scores = torch.argmax(final_scores.squeeze(0),1)
+                    preds.extend(final_scores_1.cpu().detach().squeeze(1))
+                    gts.extend(gt.cpu().detach())
                     for cnt, pred in enumerate(final_scores_1):
                         # if final_scores_1[cnt]>final_scores_2[cnt]:
                         f.writelines(str(id[cnt].item()) + "," + str(pred.item()) + "\n")
                         #    f.writelines(str(cnt) + "," + str(1) + "\n")
                         # else:
                         #    f.writelines(str(cnt) + "," + str(2) + "\n")
+                print(f"Test score is {np.sqrt(mean_squared_error(gts,preds))}")
 
 
 if __name__ == '__main__':
@@ -596,12 +619,12 @@ if __name__ == '__main__':
     parser.add_argument("--train_file_path", type=str, default="../data/task-1/train.csv", required=False)
     parser.add_argument("--dev_file_path", type=str, default="../data/task-1/dev.csv", required=False)
     parser.add_argument("--test_file_path", type=str, default="../data/task-1/dev.csv", required=False)
-    parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes1.csv", required=False)
+    parser.add_argument("--lm_file_path", type=str, default="../data/task-1/shortjokes2.csv", required=False)
     parser.add_argument("--lm_weights_file_path", type=str, default="../models/lm_joke_bert.pth", required=False)
     parser.add_argument("--model_file_path", type=str, default="../models/model_4.pth", required=False)
     parser.add_argument("--predict", type=str, default='false', required=False)
     parser.add_argument("--add_joke_train", type=str, default='true', required=False)
-    parser.add_argument("--lm_pretrain", type=str, default='false', required=False)
+    parser.add_argument("--lm_pretrain", type=str, default='true', required=False)
     parser.add_argument("--word2vec", type=str, default='false', required=False)
     parser.add_argument("--joke_classification_path", type=str, default='../data/task-1/joke_classification.csv',
                         required=False)

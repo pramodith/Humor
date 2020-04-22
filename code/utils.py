@@ -12,7 +12,8 @@ def sort_joke():
 def gen():
    df = pd.read_csv('../data/task-1/train.csv')
    df['Joke'] = df['original'].apply(lambda x: re.sub('<|/>','',x))
-   df.to_csv('../data/task-1/shortjokes2.csv',columns=['Joke'],mode='a',header=False)
+   df = df.drop_duplicates(subset=['Joke'])
+   df.to_csv('../data/task-1/shortjokes2.csv',columns=['Joke'],mode='a',header=False,index=False)
 
 def joke_file_prcessing():
    '''
@@ -80,4 +81,4 @@ def pos_tag(sentences, word):
    return pos, vectors
 
 if __name__ == '__main__':
-   sort_joke()
+   gen()
