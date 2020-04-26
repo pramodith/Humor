@@ -97,8 +97,9 @@ class RBERT(nn.Module):
                 param.requires_grad = True
 
     def pre_train_bert(self):
+        tokenizer= RobertaTokenizer.from_pretrained('roberta-base')
         optimizer = optim.Adam(self.bert_model.parameters(), 2e-5)
-        scheduler = get_linear_schedule_with_warmup(optimizer, 56, 560)
+        scheduler = get_linear_schedule_with_warmup(optimizer, 31,310)
         step = 0
         train_dataloader = get_bert_lm_dataloader(self.lm_file_path, 64)
         print("Training LM")
@@ -114,15 +115,32 @@ class RBERT(nn.Module):
                     inp = batch[0].cuda()
                 else:
                     inp = batch[0]
-                pos = torch.randint(high=inp.shape[1], size=(10*inp.shape[0],))
-                rows = torch.repeat_interleave([0])
-                pos = pos.reshape((inp.shape[0],10))
+
                 labels = inp.clone()
-                labels[pos] = -100
-                labels[inp == 1] = -100
-                mask = (inp!=1).long()
-                inp[pos] = 50264
-                outputs = self.bert_model(inp, masked_lm_labels=labels.long(),attention_mask=mask)
+                # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
+                probability_matrix = torch.full(labels.shape, 0.15)
+                special_tokens_mask = [
+                    tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in
+                    labels.tolist()
+                ]
+                probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0)
+                if tokenizer._pad_token is not None:
+                    padding_mask = labels.eq(tokenizer.pad_token_id)
+                    padding_mask = padding_mask.detach().cpu()
+                    probability_matrix.masked_fill_(padding_mask, value=0.0)
+                masked_indices = torch.bernoulli(probability_matrix).bool()
+                labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+                # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+                indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+                inp[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+
+                # 10% of the time, we replace masked input tokens with random word
+                indices_random = torch.bernoulli(
+                    torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+                random_words = torch.randint(len(tokenizer), labels.shape, dtype=torch.long)
+                inp[indices_random] = random_words[indices_random]
+                outputs = self.bert_model(inp, masked_lm_labels=labels.long(),attention_mask=(inp!=tokenizer.pad_token_id).long())
                 loss, prediction_scores = outputs[:2]
                 loss.backward()
                 #torch.nn.utils.clip_grad_norm_(self.bert_model.parameters(), 1.0)
