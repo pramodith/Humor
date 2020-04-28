@@ -11,8 +11,8 @@ def sort_joke():
 
 def gen():
    df = pd.read_csv('../data/task-1/train.csv')
-   df['Joke'] = df['original'].apply(lambda x: re.sub('<|/>','',x))
-   df = df.drop_duplicates(subset=['Joke'])
+   df['Joke'] = df['original'].apply(lambda x: re.sub('<|/>','',x).rstrip().strip())
+   df.drop_duplicates(subset=['Joke'],inplace=True)
    df.to_csv('../data/task-1/shortjokes2.csv',columns=['Joke'],mode='a',header=False,index=False)
 
 def joke_file_prcessing():

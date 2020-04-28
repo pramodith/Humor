@@ -185,60 +185,35 @@ def get_dataloaders_joke_classification(file_path : str,train_batch_size=64,test
 
 def get_sent_emb_dataloaders_bert(file_path: str, mode='train', train_batch_size=64, test_batch_size=64, model=None):
     df = pd.read_csv(file_path, sep=",")
+    if mode == 'train':
+        df1 = pd.read_csv(file_path[:-4] + "_funlines.csv", sep=",")
+        df = pd.concat([df, df1], ignore_index=True)
     id = df['id']
     X = df['original'].values
     X = [sent.replace("\"", "") for sent in X]
+    for i in range(len(df)):
+        if "<" not in df.loc[i, 'original']:
+            print("here")
     replaced = df['original'].apply(lambda x: x[x.index("<"):x.index(">") + 1])
     replaced_clean = [x.replace("<", "").replace("/>", "") for x in replaced]
     if mode != 'test':
         y = df['meanGrade'].values
     edit = df['edit']
-
-    X1 = [sent.replace(replaced[i], "< " + replaced[i].strip("<|/>") + " " + " < ") for i, sent in enumerate(X)]
-    X2 = [sent.replace(replaced[i], "<" + edit[i] + "/>") for i, sent in enumerate(X)]
-    '''
-    org_tag, org_vectors = pos_tag(X, replaced)
-    edited_tag, edited_vectors = pos_tag(X2, edit)
-    org_vectors.update(edited_vectors)
-    '''
-    X2 = [sent.replace("<" + edit[i] + "/>", "^ " + edit[i] + " ^") for i, sent in enumerate(X2)]
-    X, sent_emb, entity_locs = tokenize_bert_sent(X1, X2)
-
-    '''
-    word2ind = {word.lower(): i for i, word in enumerate(sorted(org_vectors.keys()))}
-    vectors = np.asarray([org_vectors[key] for key in sorted(org_vectors.keys())])
-    X1_glove = np.asarray([[word2ind[word] for word in X1[i]] for i in range(len(X1))])
-    X2_glove = np.asarray([[word2ind[word] for word in X2[i]] for i in range(len(X2))])
-    X_glove = np.concatenate((X1_glove,X2_glove),0)
-    glove_replaced = np.asarray(
-        [word2ind[replaced_clean[i]] if replaced_clean[i] in word2ind else word2ind['<other>'] for i in
-         range(len(replaced_clean))]).reshape(-1, 1)
-    glove_edited = np.asarray(
-        [word2ind[edit[i]] if edit[i] in word2ind else word2ind['<other>'] for i in range(len(edit))]).reshape(-1, 1)
-    glove_indices = np.concatenate((glove_replaced, glove_edited), 1)
-    '''
-    if model:
-        word2vec_replaced = np.asarray(
-            [model.vocab[replaced_clean[i]].index if replaced_clean[i] in model else -1 for i in
-             range(len(replaced))]).reshape(-1, 1)
-        word2vec_edited = np.asarray(
-            [model.vocab[edit[i]].index if edit[i] in model else -1 for i in range(len(edit))]).reshape(-1, 1)
-        word2vec_indices = np.concatenate((word2vec_replaced, word2vec_edited), 1)
-
-    #replacement_locs = np.concatenate((entity_locs, word2vec_indices), 1)
+    X2 = [sent.replace(replaced[i], "^ " + edit[i] + " ^") for i, sent in enumerate(X)]
+    X1 = [sent.replace("<", "< ").replace("/>", " <") for i, sent in enumerate(X)]
+    X, _, entity_locs = tokenize_bert_sent(X1, X2)
 
     if mode == "train":
 
         train1_inputs = torch.tensor(X)
         train_labels = torch.tensor(y)
         train_entity_locs = torch.tensor(entity_locs)
-        train_sent_emb = torch.tensor(sent_emb)
 
         # Create an iterator of our data with torch DataLoader. This helps save on memory during training because, unlike a for loop,
         # with an iterator the entire dataset does not need to be loaded into memory
 
         # train_data = TensorDataset(train1_inputs,train2_inputs, train_entity_locs, train_word2vec_locs, train_labels)
-        train_data = TensorDataset(train1_inputs, train_sent_emb, train_entity_locs, train_labels)
+        train_data = TensorDataset(train1_inputs, train_entity_locs, train_labels)
         train_dataloader = DataLoader(train_data, batch_size=train_batch_size, shuffle=True)
 
         # validation_data = TensorDataset(validation1_inputs,validation2_inputs, validation_entity_locs, validation_word2vec_locs, validation_labels)
@@ -246,12 +221,11 @@ def get_sent_emb_dataloaders_bert(file_path: str, mode='train', train_batch_size
 
     if mode == "val":
         test1_input = torch.tensor(X)
-        test2_input = torch.tensor(sent_emb)
         y = torch.tensor(y)
         train_entity_locs = torch.tensor(entity_locs)
         # word2vec_locs = torch.tensor(word2vec_indices)
         id = torch.tensor(id)
-        test_data = TensorDataset(test1_input, test2_input, train_entity_locs,y, id)
+        test_data = TensorDataset(test1_input, train_entity_locs,y, id)
         test_sampler = SequentialSampler(test_data)
         test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
 
@@ -356,17 +330,21 @@ def tokenize_bert(X: list, org : bool):
     sentences = ["[CLS] " + sentence + " [SEP]" for sentence in X]
 
     # Load the tokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     #tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    #tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
     # Tokenize and vectorize
-    tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
+    tokenized_text = [tokenizer.tokenize(sentence,add_special_tokens=False) for sentence in sentences]
+    tokenized_text2 = [tokenizer.tokenize(sentence,add_special_tokens=True) for sentence in sentences]
+    print(all([tokenized_text[i]==tokenized_text2[i] for i in range(len(tokenized_text))]))
     X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
 
     # MAX_SEQ_LEN
-    MAX_LEN = max([len(x) for x in X])+1
-    #MAX_LEN = 50
+    #MAX_LEN = max([len(x) for x in X])+1
+    MAX_LEN = 50
     #Pad sequences to make them all eqally long
-    X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post',value=0)
+    X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post',value=tokenizer.pad_token)
 
     '''
     if org:
@@ -377,9 +355,9 @@ def tokenize_bert(X: list, org : bool):
 
     # Find the locations of each entity and store them
     if org:
-        entity_locs = np.asarray([[i for i, s in enumerate(sent) if s == '<'] for sent in tokenized_text])
+        entity_locs = np.asarray([[i for i, s in enumerate(sent) if '<' in s and len(s)==2] for sent in tokenized_text])
     else:
-        entity_locs = np.asarray([[i for i, s in enumerate(sent) if s == '^'] for sent in tokenized_text])
+        entity_locs = np.asarray([[i for i, s in enumerate(sent) if '^' in s and len(s)==2] for sent in tokenized_text])
 
     return X,entity_locs
 
@@ -471,6 +449,23 @@ def get_dataloaders_bert(file_path : str, model ,mode="train",train_batch_size=6
         test_data_loader = DataLoader(test_data, sampler=test_sampler, batch_size=test_batch_size)
 
         return test_data_loader
+
+def tokenize_roberta_sent(X1: list, X2 : list ):
+    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    sentences = ["<s> " + X1[i] + " </s></s> " + X2[i] + " </s>" for i in range(len(X1))]
+    tokenized_text = [tokenizer.tokenize(sentence) for sentence in sentences]
+    X = [tokenizer.convert_tokens_to_ids(sent) for sent in tokenized_text]
+    #sent_emb = [[0 if i<sentence.index(102) else 1 for i  in range(len(sentence)) ] for sentence in X]
+    MAX_LEN = max([len(x) for x in X])+1
+    # Pad sequences to make them all eqally long
+    X = pad_sequences(X, MAX_LEN, 'long', 'post', 'post',1)
+    #sent_emb = pad_sequences(sent_emb,MAX_LEN,'long','post','post',1)
+    # Find the locations of each entity and store them
+    entity_locs1 = np.asarray(
+            [[i for i, s in enumerate(sent) if '<' in s and len(s) == 2] for sent in tokenized_text])
+    entity_locs2 = np.asarray([[i for i, s in enumerate(sent) if '^' in s and len(s) == 2] for sent in tokenized_text])
+
+    return X,np.concatenate((entity_locs1, entity_locs2), 1)
 
 def get_dataloaders_bert_task2(file_path : str ,mode="train",train_batch_size=64,test_batch_size = 64):
     '''
